@@ -86,3 +86,34 @@
 
 - [x] Live curl smoke: POST → 201, GET list, PATCH advances `updated_at`, `?status_filter=passed` filters, DELETE → 204, GET deleted → 404.
 - [x] Browser smoke: validated by Mr. Alonso end-to-end (add → detail → status change → edit → delete).
+
+---
+
+## Phase 1b — URL paste + LLM extraction (no PDF yet)
+
+*Completed: 2026-05-05 · Session note: `docs/sessions/2026-05-05-phase-1b-llm-extraction.md`*
+
+**Outcome**: paste a real listing's text or URL on `/listings/new`, click Extract, see the form auto-populate from a Sonnet 4.6 tool-use call, review/edit, save normally. Two-step UX (extract → review → save) keeps human in the loop. First phase that spends API tokens. Validated live by Mr. Alonso, including adversarial injection test (model ignored embedded "IGNORE PREVIOUS INSTRUCTIONS" line).
+
+### [backend] — Extraction module + endpoint
+
+- [x] `Listing.raw_text` Text column. Migration `f0aff42eb570_phase_1b_add_raw_text_column.py`. Added to `ListingCreate` / `ListingUpdate` / `ListingRead`.
+- [x] `Settings.extraction_model = "claude-sonnet-4-6"`. `Settings` now reads `.env` from both `backend/` and the repo root.
+- [x] `silvercurrent/ingestion/listings.py` — `extract_listing()` with Anthropic SDK tool-use, forced `tool_choice` for schema-validated output. `<listing_source>` delimiters per ADR 0002. System prompt explicitly frames source as data, never instructions. Configurable client for tests. Returns `ExtractionResult{extracted, raw_text, source_url, usage}`.
+- [x] `fetch_url()` — httpx GET, real User-Agent, 15s timeout, 2MB cap, follows redirects.
+- [x] `POST /api/listings/extract` — body `{source_url?, source_text?}` (one required). Fetch failure → 400 with "paste text instead" hint; `ExtractionError` → 502.
+- [x] 11 extraction unit tests + 4 endpoint tests. AsyncAnthropic mocked. Verifies: tool-use parsing, `<listing_source>` wrapping, hostile content stays inside tags, forced `tool_choice`, URL in user message, ExtractionError on missing tool_use, ValidationError on missing business_name, endpoint happy path, empty body 422, URL fetch failure 400, ExtractionError 502.
+- [x] Gates: pytest (26 pass), ruff check + format, mypy --strict (24 source files) — all green.
+
+### [frontend] — Auto-fill panel
+
+- [x] `lib/listings.ts`: `raw_text` on `Listing`; new `ExtractedListing`, `ExtractionUsage`, `ExtractionResult` types.
+- [x] `ListingForm` extended with optional `enableExtraction` prop. Renders Auto-fill Card above form: tabs (Paste text / Paste URL), Extract button, token-usage display, inline error state. On success, populates 13 LLM-fillable fields + `raw_text` + `source_url`; sets `source` to URL hostname or `"paste"`.
+- [x] `app/listings/new/page.tsx` passes `enableExtraction`. Edit page does not.
+- [x] Gates: pnpm lint, pnpm build — green.
+
+### Live smoke
+
+- [x] Browser smoke: real listing text → Extract → form auto-fills → review → Create → appears in inventory.
+- [x] Adversarial test: embedded "IGNORE PREVIOUS INSTRUCTIONS" was ignored; model recorded the real asking price.
+- [x] Token-usage line displays after extraction.
