@@ -260,10 +260,10 @@ async def test_analyst_caps_iterations(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_analyze_endpoint_returns_deal_sheet(
+async def test_analyze_endpoint_persists_deal_sheet(
     analyze_client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A successful POST returns the Deal Sheet markdown and usage."""
+    """A successful POST persists a DealSheet row and returns it serialized."""
     listing = _seed_listing(db_session)
     await db_session.commit()
 
@@ -282,13 +282,72 @@ async def test_analyze_endpoint_returns_deal_sheet(
 
     assert response.status_code == 200
     body = response.json()
-    assert "Snapshot" in body["deal_sheet"]
+    assert "Snapshot" in body["deal_sheet"]["markdown"]
+    assert body["deal_sheet"]["listing_id"] == str(listing.id)
+    assert body["deal_sheet"]["model"] == "test-model"
+    assert body["deal_sheet"]["iterations"] == 1
+    assert body["deal_sheet"]["output_tokens"] == 120
     assert body["usage"]["model"] == "test-model"
-    assert body["usage"]["iterations"] == 1
+    # Row should now be retrievable via GET.
+    history_response = await analyze_client.get(f"/api/analyze/{listing.id}")
+    assert history_response.status_code == 200
+    rows = history_response.json()
+    assert len(rows) == 1
+    assert rows[0]["id"] == body["deal_sheet"]["id"]
 
 
 @pytest.mark.asyncio
 async def test_analyze_endpoint_404_for_unknown_listing(analyze_client: AsyncClient) -> None:
     """Unknown listing id returns 404 before invoking the agent."""
     response = await analyze_client.post(f"/api/analyze/{uuid4()}")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_deal_sheets_returns_newest_first(
+    analyze_client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Multiple analyses for one listing come back newest-first."""
+    from datetime import UTC, datetime, timedelta
+
+    from silvercurrent.db.models import DealSheet
+
+    listing = _seed_listing(db_session)
+    await db_session.commit()
+
+    base = datetime.now(UTC)
+    older = DealSheet(
+        listing_id=listing.id,
+        markdown="### Snapshot\nfirst run",
+        model="test-model",
+        input_tokens=100,
+        output_tokens=50,
+        iterations=1,
+        created_at=base,
+    )
+    newer = DealSheet(
+        listing_id=listing.id,
+        markdown="### Snapshot\nsecond run",
+        model="test-model",
+        input_tokens=120,
+        output_tokens=60,
+        iterations=2,
+        created_at=base + timedelta(seconds=5),
+    )
+    db_session.add(older)
+    db_session.add(newer)
+    await db_session.commit()
+
+    response = await analyze_client.get(f"/api/analyze/{listing.id}")
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 2
+    assert "second run" in rows[0]["markdown"]
+    assert "first run" in rows[1]["markdown"]
+
+
+@pytest.mark.asyncio
+async def test_list_deal_sheets_404_for_unknown_listing(analyze_client: AsyncClient) -> None:
+    """GET on a non-existent listing returns 404."""
+    response = await analyze_client.get(f"/api/analyze/{uuid4()}")
     assert response.status_code == 404

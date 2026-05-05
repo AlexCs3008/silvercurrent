@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, String, Text, Uuid
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -75,3 +75,27 @@ class ChatTurn(Base):
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+
+class DealSheet(Base):
+    """A single Run Analysis output for a listing (Phase 3 slice 3).
+
+    Persisted so the listing page can show prior analyses without re-running.
+    Append-only — re-running creates a new row rather than overwriting, so the
+    user can compare across criteria changes or new disclosures.
+    """
+
+    __tablename__ = "deal_sheet"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    listing_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("listing.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+    markdown: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Usage at the time of the run — kept so the user can see what each
+    # analysis cost and which model produced it.
+    model: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    iterations: Mapped[int] = mapped_column(Integer, nullable=False)

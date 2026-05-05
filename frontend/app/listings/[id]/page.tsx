@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ChatPanel } from "@/components/chat-panel";
 import { ListingActions } from "@/components/listing-actions";
+import { RunAnalysis } from "@/components/run-analysis";
+import { type DealSheet } from "@/lib/analyze";
 import { ApiError, apiGet } from "@/lib/api";
 import { type ChatTurn } from "@/lib/chat";
 import { formatDate, formatMoney, type Listing } from "@/lib/listings";
@@ -44,6 +46,22 @@ export default async function ListingDetailPage({ params }: PageProps) {
         : err instanceof Error
           ? err.message
           : "Could not load chat history.";
+  }
+
+  // Fetch persisted Deal Sheets for this listing. Same pattern: don't block
+  // the page if the call fails — the Run Analysis section can still produce
+  // new ones.
+  let initialSheets: DealSheet[] = [];
+  let sheetsError: string | null = null;
+  try {
+    initialSheets = await apiGet<DealSheet[]>(`/api/analyze/${id}`);
+  } catch (err) {
+    sheetsError =
+      err instanceof ApiError
+        ? `Backend returned ${err.status}`
+        : err instanceof Error
+          ? err.message
+          : "Could not load prior analyses.";
   }
 
   return (
@@ -175,6 +193,20 @@ export default async function ListingDetailPage({ params }: PageProps) {
         Added {formatDate(listing.created_at)} · last updated{" "}
         {formatDate(listing.updated_at)}
       </p>
+
+      <div className="mt-4 flex flex-col gap-3 border-t border-border pt-6">
+        {sheetsError ? (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+          >
+            <p className="font-medium">Couldn’t load prior analyses.</p>
+            <p className="mt-1 font-mono text-xs">{sheetsError}</p>
+          </div>
+        ) : (
+          <RunAnalysis listingId={id} initialSheets={initialSheets} />
+        )}
+      </div>
 
       <div className="mt-4 flex flex-col gap-3 border-t border-border pt-6">
         <div>
