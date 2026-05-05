@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# Node / Next.js
+node_modules/
+.next/
+.turbo/
+dist/
+build/
+.pnpm-store/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Local data — do not commit (licensing + bloat)
+data/
+corpus/
+
+# Claude Code ephemera
+.claude/teams/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
