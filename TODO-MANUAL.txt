@@ -47,9 +47,10 @@ The analyst collection / ingestion script doesn't exist yet — it lands in Phas
     - Why: quarterly multiples by Main Street ($0–2M) vs. Lower Middle Market ($2–50M). Reference for valuation sanity checks.
 
 
-Pre-Phase-3 prep
-----------------
+Refining as you go
+------------------
 
-[ ] (2026-05-05) Fill in docs/criteria.md with real values before Phase 3 starts.
-    - Why: the Analyst injects this on every pass. Confident-default placeholders would corrupt early output.
-    - Memory note: Claude knows to leave the existing <TODO> placeholders alone until you do this.
+[ ] (ongoing, started 2026-05-05) Refine docs/criteria.md as real listings come in.
+    - Current state: filled with engineered V1 placeholder values 2026-05-05 to unblock Phase 3.
+    - Replace section-by-section as preferences emerge from looking at deals.
+    - Each refinement is just a normal commit — nothing to coordinate.
