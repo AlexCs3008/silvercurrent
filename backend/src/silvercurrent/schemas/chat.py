@@ -1,0 +1,47 @@
+"""Pydantic schemas for the chat API."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+ChatRole = Literal["user", "assistant"]
+
+
+class ChatRequest(BaseModel):
+    """Body for `POST /api/chat`."""
+
+    scope: str = Field(..., min_length=1, max_length=128)
+    message: str = Field(..., min_length=1, max_length=10_000)
+
+
+class ChatTurnRead(BaseModel):
+    """One persisted chat turn."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    scope: str
+    role: ChatRole
+    content: str
+    created_at: datetime
+
+
+class ChatUsage(BaseModel):
+    """Cumulative LLM usage for a chat exchange (across all tool-loop iterations)."""
+
+    input_tokens: int
+    output_tokens: int
+    model: str
+    iterations: int
+
+
+class ChatResponse(BaseModel):
+    """Response body for `POST /api/chat`."""
+
+    user_turn: ChatTurnRead
+    assistant_turn: ChatTurnRead
+    usage: ChatUsage
