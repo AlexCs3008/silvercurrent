@@ -61,11 +61,32 @@
 4. **Backend `Dockerfile` runs uvicorn with `--reload`** — appropriate for local dev compose; flag for prod hardening if/when it matters.
 5. **No `alembic upgrade head` run yet** — DB doesn't exist until `docker compose up` succeeds. First boot will need it; runtime instructions land in Phase 1.
 
+## Mid-session pivot — Docker dropped from dev
+
+Docker Desktop's daemon wasn't running at integration time, and Mr. Alonso pushed back on the dependency. Re-read charter §8: it had always endorsed *"SQLite (dev) → Postgres (when needed)"*. The Docker-first stance was overshoot. Pivoted in-session:
+
+- Added `aiosqlite` to backend deps.
+- Flipped default `DATABASE_URL` to `sqlite+aiosqlite:///./silvercurrent.db`.
+- Replaced `chroma_host`/`chroma_port` settings with `chroma_persist_dir` (Chroma `PersistentClient` — file-backed, in-process, no server).
+- Updated `alembic/env.py` to (a) normalize `sqlite+aiosqlite://` → `sqlite://` for sync migration runs and (b) fall back to `Settings().database_url` when `DATABASE_URL` env is unset.
+- Updated `.env.example`, `README.md` quickstart (two terminals: `uv run uvicorn ...` + `pnpm dev`), `.gitignore` (`*.db`, `*.db-journal`, `.chroma/`).
+- Wrote ADR `0005-local-dev-without-docker.md` documenting the migration trigger back to Postgres when SQLite stops being enough.
+- Kept `docker-compose.yml` and the two `Dockerfile`s in the repo as the documented Postgres migration path.
+
+## Native smoke test — passed
+
+- `uv run alembic upgrade head` — migration applied to fresh `silvercurrent.db`.
+- `uv run pytest` — green (1 test).
+- `uv run ruff check .` + `uv run ruff format --check .` — clean.
+- `uv run mypy src tests` (strict) — 15 files, no issues.
+- `uv run uvicorn silvercurrent.main:app --host 0.0.0.0 --port 8000` — backend up, `GET /api/health` → `{"status":"ok","service":"silvercurrent-backend"}` (HTTP 200).
+- `pnpm dev` — frontend up, Next.js 16 ready in 4.6s, `GET /` → 200, HTML includes the sidebar shell, "Backend health" card, and the loading indicator that resolves client-side via the configured CORS path.
+- Final commit + push closes Phase 0.
+
 ## What's open
 
-- **Docker Desktop wasn't running at session end**, so the `docker compose up` smoke test (the canonical Phase 0 "done when") didn't execute. Once Mr. Alonso starts Docker Desktop, the lead runs `cp .env.example .env`, fills `ANTHROPIC_API_KEY`, then `docker compose up` and verifies the frontend home page renders the `/api/health` response. After that passes, Phase 0 moves to `DONE.md`.
-- Phase 0 entry remains in `tasks/CURRENT.md` until the smoke test passes.
+Nothing. Phase 0 closed.
 
 ## Next session
 
-- Smoke test, then Phase 1 (Listing data model + manual ingestion). Likely a solo session — Phase 1 is mostly `[backend]` + `[frontend]` work that's sequentially coupled (define the API contract, then implement both sides), not independent enough to justify another team.
+Phase 1 — Listing data model + manual ingestion. Likely solo: `[backend]` + `[frontend]` work is sequentially coupled (define the listing API contract first, then implement both sides). See `tasks/BACKLOG.md` for subtasks.

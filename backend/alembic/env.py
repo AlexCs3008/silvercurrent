@@ -25,11 +25,15 @@ if config.config_file_name is not None:
 
 
 def _resolve_url() -> str:
-    """Resolve the DB URL: env var wins, then `alembic.ini`. Normalize async drivers."""
-    url = os.environ.get("DATABASE_URL") or config.get_main_option("sqlalchemy.url") or ""
+    """Resolve the DB URL: env var, then Settings default. Normalize async drivers to sync."""
+    from silvercurrent.config import get_settings  # noqa: PLC0415 — local import avoids settings load on package import
+
+    url = os.environ.get("DATABASE_URL") or get_settings().database_url
     # Alembic's autogenerate runs synchronously; strip any async driver suffix.
     if url.startswith("postgresql+asyncpg://"):
         url = url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+    elif url.startswith("sqlite+aiosqlite://"):
+        url = url.replace("sqlite+aiosqlite://", "sqlite://", 1)
     return url
 
 

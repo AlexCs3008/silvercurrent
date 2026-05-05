@@ -28,6 +28,13 @@ build/
 data/
 corpus/
 
+# Local dev DB + vector store (SQLite + Chroma persistent client)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.chroma/
+
 # Claude Code ephemera
 .claude/teams/
 

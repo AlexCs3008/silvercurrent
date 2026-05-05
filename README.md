@@ -13,12 +13,27 @@ A personal cockpit for evaluating small-business acquisitions. Single user, loca
 
 ## Quickstart (Phase 0+)
 
+Local-first, no Docker. Two terminals.
+
 ```bash
-cp .env.example .env       # fill in ANTHROPIC_API_KEY
-docker compose up          # boots postgres, chroma, backend, frontend
-# → http://localhost:3000  (frontend)
-# → http://localhost:8000  (backend, /api/health for smoke test)
+cp .env.example .env        # fill in ANTHROPIC_API_KEY (needed once agents are wired)
+
+# terminal 1 — backend
+cd backend
+uv sync
+uv run alembic upgrade head           # creates silvercurrent.db (SQLite) + tables
+uv run uvicorn silvercurrent.main:app --reload --host 0.0.0.0 --port 8000
+
+# terminal 2 — frontend
+cd frontend
+pnpm install
+pnpm dev
+# → http://localhost:3000  (frontend, calls /api/health on load)
+# → http://localhost:8000  (backend)
 ```
+
+If/when SQLite stops being enough (concurrent writers, JSONB, full-text), `docker-compose.yml`
+boots Postgres + Chroma server-side. See `docs/decisions/0005-local-dev-without-docker.md`.
 
 ## Stack
 

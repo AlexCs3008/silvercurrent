@@ -9,9 +9,8 @@ class Settings(BaseSettings):
     """Runtime settings for the Silvercurrent backend."""
 
     anthropic_api_key: str = ""
-    database_url: str = "postgresql+psycopg://silvercurrent:silvercurrent@localhost:5432/silvercurrent"
-    chroma_host: str = "localhost"
-    chroma_port: int = 8001
+    database_url: str = "sqlite+aiosqlite:///./silvercurrent.db"
+    chroma_persist_dir: str = "./.chroma"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
