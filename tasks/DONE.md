@@ -183,3 +183,54 @@
 ### Live smoke
 
 - [x] Browser smoke (Mr. Alonso): asked questions against the seed corpus, Operator searched KB and answered with filename citations. Token usage displays per exchange.
+
+---
+
+## Phase 3 — Analyst agent + Router + Deal Sheet
+
+*Completed: 2026-05-05 · Session note: `docs/sessions/2026-05-05-phase-3-analyst-router-deal-sheet.md`*
+
+**Outcome**: open a listing, click **Run Analysis**, get a structured Deal Sheet (Snapshot · Hard knockouts · Numeric fit · Computed metrics · Qualitative signals · Open questions · Recommendation). Persisted append-only. Listing-scoped chat is Router-classified per turn — Analyst for deal-specific questions, Operator for general ETA mechanics. Three of four runtime agents now live.
+
+### [analyst] / [backend] — slice 1: agent + Deal Sheet endpoint
+
+- [x] `agents/tools/deal_metrics.py`: `compute_deal_metrics(listing_id)` deterministic — asking-multiples (vs. SDE and revenue), SDE margin, SBA 7(a) financing scenario at 25% down / 10y / ~10.5% rate. Reports `missing_fields` instead of substituting guesses.
+- [x] `agents/analyst.py`: `AnalystAgent.analyze()` bounded tool-loop (`MAX_ITERATIONS=6`) on Sonnet 4.6. Three tools (`get_active_listing`, `get_user_criteria`, `compute_deal_metrics`).
+- [x] `prompts/analyst.md` rewritten — locked seven-section Deal Sheet structure, three "don't" rules (no invented numbers, no buyer-voice prescriptions, no extrapolating from missing data).
+- [x] `POST /api/analyze/{listing_id}` non-conversational endpoint. 404 on unknown listing.
+- [x] 9 new tests. 71 tests pass total. ruff + mypy --strict clean.
+
+### [router] / [analyst] — slice 2: classification + listing-scoped chat
+
+- [x] `agents/router.py`: `RouterAgent` Haiku 4.5, forced tool-use (`tool_choice={"type": "tool", "name": "route"}`) for structured output. Returns `agent` ∈ {operator, analyst, clarify, out_of_scope} + rationale + optional clarification_question / out_of_scope_reply.
+- [x] `prompts/router.md` rewritten — five routing rules including "no listing → never route to analyst" and "listing in scope + vague evaluative question → analyst."
+- [x] `agents/analyst.py`: `AnalystAgent.chat()` conversational mode + `prompts/analyst-chat.md` (short answers, no Deal Sheet structure).
+- [x] `POST /api/chat` accepts `scope="global"` or `scope="listing:<uuid>"`. Verifies the listing exists (404). Calls Router, dispatches to operator/analyst/clarify/out_of_scope. Defensive fallback for analyst-without-listing.
+- [x] `ChatResponse` schema gains `agent_used` + `routing` (model, rationale, tokens) so the UI can label.
+- [x] `<ChatPanel variant="listing">` mounted on `/listings/[id]` with listing-flavored copy. Usage line shows routed agent + Router rationale.
+- [x] 13 new tests (5 router unit, 2 analyst-chat, 5 dispatch, 1 listing-404). 84 tests pass total. ruff + mypy --strict + tsc + eslint clean.
+
+### [analyst] / [frontend] — slice 3: Run Analysis button + persistence
+
+- [x] `DealSheet` SQLAlchemy model — id, listing_id (FK with `ondelete=CASCADE`), created_at, markdown, model, input_tokens, output_tokens, iterations.
+- [x] Alembic migration `87fc5ed94d49_phase_3_slice_3_deal_sheet.py` adds the table.
+- [x] `POST /api/analyze/{listing_id}` now persists the run; response shape becomes `{deal_sheet: DealSheetRead, usage}`.
+- [x] `GET /api/analyze/{listing_id}` returns all sheets for a listing, newest first.
+- [x] `<RunAnalysis>` client component on `/listings/[id]` with button + history list + error rollback.
+- [x] `<DealSheetView>` renderer parses on `### ` headers, pre-wraps section bodies, narrow `**bold**` inline transform with HTML escaping. No `react-markdown` dep.
+- [x] Latest sheet expanded by default, older ones collapse.
+- [x] 4 new tests. 86 tests pass total. ruff + mypy --strict + tsc + eslint clean.
+
+### [knowledge] — mid-phase corpus + retrieval work (committed `ebed448`)
+
+- [x] Operator corpus: SBA SOP 50 10 v8 (docx → md via stdlib zipfile/xml), IRS Pub 535 2022, Mercer Capital QoE primer, Paul Weiss working-capital adjustments. Inventory updated.
+- [x] `kb_search` dedup: over-fetch 4× from Chroma, drop near-duplicates by 200-char normalized fingerprint, return top-k unique. Fixed the SOP-repeats-requirements-across-loan-subtypes failure mode.
+- [x] `TODO-MANUAL.txt` parking lot established for manual-only work (form-gated downloads, paid books).
+
+### [knowledge] — V1 criteria fill (committed `8b8cecc`)
+
+- [x] `docs/criteria.md` filled with engineered V1 placeholder values shaped around Miami / generic ETA buyer profile. Loud V1-placeholder banner. Earlier "user-owned, do not fill" memory updated.
+
+### Live smoke
+
+- [x] Browser smoke (Mr. Alonso): pasted real BizBuySell listing via copy/paste fallback (URL fetch 403'd as expected per CLAUDE.md hard rule #2). Ran analysis, Deal Sheet rendered cleanly. Confirmed working.
