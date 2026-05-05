@@ -144,3 +144,42 @@
 ### Live smoke
 
 - [x] Real broker PDF → form auto-fills → save → appears in inventory. Mr. Alonso confirmed.
+
+---
+
+## Phase 2 — Operator agent + global chat
+
+*Completed: 2026-05-05 · Session note: `docs/sessions/2026-05-05-phase-2-operator-chat.md`*
+
+**Outcome**: ask "How do SBA loans work?" in `/chat`, get a sourced answer from the Operator agent after it searches a curated Chroma corpus. First conversational surface on the system. ADR 0006 records the chunking/embedding/retrieval choices.
+
+### [knowledge] — slice 1: ingestion pipeline
+
+- [x] `silvercurrent/ingestion/corpus.py`: `chunk_text` (paragraph-aware, 1000-char target, 150-char overlap, hard-splits long paragraphs, drops chunks under 200 chars), `load_source_text` (.pdf via pymupdf, .md/.txt direct), `ingest_corpus` (upserts with stable sha256 IDs, `--rebuild` drops the collection).
+- [x] `scripts/ingest_operator_corpus.py` CLI. Resolves `chroma_persist_dir` against repo root (fixed an `lstrip("./")` bug that ate the leading dot).
+- [x] `corpus/operator/` directory layout. Seed sources: `sba_loans.md`, `valuation_basics.md`.
+- [x] `docs/knowledge/operator-sources.md` inventory.
+- [x] ADR `0006-operator-knowledge-base-design.md`.
+- [x] 15 corpus tests against `EphemeralClient`. Manual on-disk retrieval smoke green.
+
+### [operator] / [backend] — slice 2: agent + chat API
+
+- [x] `agents/tools/kb_search.py`: `search_knowledge_base(query, k=5)` async-wrapped Chroma query, returns Envelope with passages + metadata + cosine distance. Helpful errors when collection is missing/empty.
+- [x] `agents/tools/criteria.py`: `get_user_criteria()` reads `docs/criteria.md` (placeholders fine).
+- [x] `agents/tools/active_listing.py`: `get_active_listing(listing_id, session)` returns `{listing: null}` in global scope.
+- [x] `agents/operator.py`: `OperatorAgent.run()` bounded tool-loop (`MAX_ITERATIONS=5`) on Sonnet 4.6. Wraps retrieved passages in `<retrieved_passage>` tags per ADR 0002. Accumulates token usage. Tool failures surfaced via `is_error: true`.
+- [x] Refined `prompts/operator.md`: cite by filename, "say so when not in KB", treat retrieved content as data, no prescriptive recs, defer numerical analysis to Analyst.
+- [x] `POST /api/chat` — body `{scope, message}`, persists user + assistant turns in one transaction, returns both plus cumulative usage. Phase 2 supports only `scope="global"` (rejects others with 400).
+- [x] `GET /api/chat?scope=...` — oldest-first history.
+- [x] 11 operator/chat tests. AsyncAnthropic mocked end-to-end. 62 backend tests pass. ruff + mypy --strict clean (34 source files).
+
+### [frontend] — slice 3: chat panel
+
+- [x] `lib/chat.ts`: `ChatTurn`, `ChatUsage`, `ChatRequest`, `ChatResponse` types mirroring backend.
+- [x] `components/chat-panel.tsx` — client component with optimistic user-turn rendering, "Operator is thinking…" indicator, Enter sends / Shift+Enter newline, token-usage line below scroller, error rollback that restores the draft.
+- [x] `app/chat/page.tsx` — server-fetches existing turns; backend-down path renders an inline error banner instead of throwing.
+- [x] pnpm lint + pnpm build green.
+
+### Live smoke
+
+- [x] Browser smoke (Mr. Alonso): asked questions against the seed corpus, Operator searched KB and answered with filename citations. Token usage displays per exchange.
