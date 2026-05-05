@@ -51,3 +51,38 @@
 - [x] `.env.local.example` documenting `NEXT_PUBLIC_API_URL`
 - [x] `Dockerfile` for frontend (kept; native dev is `pnpm dev`)
 - [x] Gates: pnpm lint, pnpm build — all green
+
+---
+
+## Phase 1a — Manual listing CRUD (no LLM)
+
+*Completed: 2026-05-05 · Session note: `docs/sessions/2026-05-05-phase-1a-listing-crud.md`*
+
+**Outcome**: end-to-end manual entry loop. User can add a listing in the browser, see it on the inventory page, change its status, edit it, and delete it. SQLite + SQLAlchemy 2 async. 15 backend tests, ruff + mypy --strict clean. Frontend `pnpm lint` + `pnpm build` clean. Validated in browser by Mr. Alonso.
+
+### [backend] — Listing CRUD API
+
+- [x] `Listing` model fleshed out: `business_name` (required), `industry`, `naics_code`, `location`, `asking_price`/`sde`/`cash_flow`/`revenue` (whole-dollar `int`), `narrative`, `reason_for_selling`, `broker_name`/`broker_contact`, `status`, `notes`, `tags` (JSON), `updated_at` (with `onupdate=_utcnow`). `raw_html` dropped (1b adds `raw_text` instead). UUID type switched from `postgresql.UUID` to dialect-agnostic `Uuid()`.
+- [x] Migration `3135435dad97_phase_1a_flesh_out_listing_model.py` (alembic batch ops; hand-edited to add `server_default` on non-null cols so future seeded DBs survive).
+- [x] `alembic/env.py`: enabled `render_as_batch=True` for SQLite so future column changes work.
+- [x] Pydantic schemas in `silvercurrent/schemas/listings.py`: `ListingStatus` Literal, `ListingCreate`, `ListingUpdate` (`extra="forbid"`), `ListingRead` (`from_attributes=True`).
+- [x] FastAPI router `silvercurrent/api/listings.py`: `GET /api/listings` (with `status_filter`), `POST`, `GET/{id}`, `PATCH/{id}`, `DELETE/{id}` (hard 204).
+- [x] Router included in `main.py`.
+- [x] `tests/conftest.py`: in-memory SQLite per test + `httpx.AsyncClient` with `get_session` dependency override.
+- [x] `tests/test_listings.py`: 14 tests covering happy paths, validation (missing required, negative price, bad status, unknown PATCH field), 404s, status filter, partial update.
+- [x] Gates: pytest (15 pass), ruff check + format, mypy --strict (21 source files) — all green.
+
+### [frontend] — Inventory + add + detail + edit
+
+- [x] `lib/api.ts` extended: `apiPost`, `apiPatch`, `apiDelete` + `cache: "no-store"`.
+- [x] `lib/listings.ts`: typed mirror of backend schemas; `formatMoney` (Intl USD, no fractions, `null → "—"`); `formatDate`; `STATUS_COLOR` map.
+- [x] shadcn primitives added: `label`, `textarea`, `select`, `badge`.
+- [x] `components/status-badge.tsx`, `listing-card.tsx` (real fields, `<Link>` to detail), `listing-form.tsx` (shared create/edit, money parsing, comma-separated tags), `listing-actions.tsx` (status select with PATCH, edit link, delete with `confirm()`).
+- [x] Pages: `app/listings/page.tsx` (filter chips, grid, empty + error states), `listings/new/page.tsx`, `listings/[id]/page.tsx` (sectioned detail, `notFound()` on 404), `listings/[id]/edit/page.tsx`.
+- [x] Switched `<Button asChild>` → `buttonVariants()` className on `<Link>` since this shadcn build uses Base UI (no Radix Slot).
+- [x] Gates: pnpm lint, pnpm build — green.
+
+### Smoke test
+
+- [x] Live curl smoke: POST → 201, GET list, PATCH advances `updated_at`, `?status_filter=passed` filters, DELETE → 204, GET deleted → 404.
+- [x] Browser smoke: validated by Mr. Alonso end-to-end (add → detail → status change → edit → delete).
