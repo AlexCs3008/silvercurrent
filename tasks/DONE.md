@@ -117,3 +117,30 @@
 - [x] Browser smoke: real listing text → Extract → form auto-fills → review → Create → appears in inventory.
 - [x] Adversarial test: embedded "IGNORE PREVIOUS INSTRUCTIONS" was ignored; model recorded the real asking price.
 - [x] Token-usage line displays after extraction.
+
+---
+
+## Phase 1c — PDF upload + extraction
+
+*Completed: 2026-05-05 · Session note: `docs/sessions/2026-05-05-phase-1c-pdf.md`*
+
+**Outcome**: drop a broker teaser or CIM PDF on `/listings/new`, form auto-populates from Sonnet 4.6 just like 1b. Reuses the entire 1b extraction pipeline; only the parsing layer is new (`pymupdf`). 36 backend tests pass; live smoke validated by Mr. Alonso.
+
+### [backend] — PDF parser + endpoint
+
+- [x] Add `pymupdf` 1.27.x and `python-multipart` 0.0.27 deps.
+- [x] `silvercurrent/ingestion/pdfs.py` — `extract_text_from_pdf()` + `PDFParseError`. Iterates pages via `load_page`, joins with blank lines. Sparse-text guard (`< 200 chars`) rejects scanned/image-only PDFs with a "paste text instead" hint. No OCR.
+- [x] `Settings.pdf_max_bytes = 20_000_000` (20 MB).
+- [x] `POST /api/listings/extract-pdf` — `Annotated[UploadFile, File()]` (avoids ruff B008). Empty 400, over-cap 413, parse failure 400, ExtractionError 502. Reuses `extract_listing()`; response shape identical to `/extract`.
+- [x] 10 tests in `tests/test_pdf_extraction.py`. PDFs synthesized in-memory via `pymupdf.open()` + `insert_textbox()`. No fixture files committed.
+- [x] Gates: pytest (36 pass total), ruff check + format clean, mypy --strict clean (26 source files).
+
+### [frontend] — PDF upload tab
+
+- [x] `apiPostMultipart<T>(path, FormData)` helper in `lib/api.ts` (lets browser set `Content-Type` with boundary).
+- [x] `ListingForm` extract panel grows a third tab: **Upload PDF**. File picker with filename + size preview, posts FormData to `/extract-pdf`, populates form via the same `applyExtraction()` path. PDF source labeled `"pdf"` (not `"paste"`).
+- [x] Gates: pnpm lint, pnpm build — green.
+
+### Live smoke
+
+- [x] Real broker PDF → form auto-fills → save → appears in inventory. Mr. Alonso confirmed.

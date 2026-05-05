@@ -1,7 +1,7 @@
 # Tasks — currently in flight
 
-*Active phase: **Phase 1c — PDF upload + extraction***
-*Last updated: 2026-05-05 — solo session*
+*Active phase: **none — Phase 1c complete, awaiting next pick***
+*Last updated: 2026-05-05 — Phase 1c closed out, moved to `tasks/DONE.md`*
 
 ---
 
@@ -17,37 +17,10 @@ This is the durable working-memory record of what's actively being built. Conven
 
 ---
 
-## Phase 1c — PDF upload + extraction
+*Nothing in flight. Pick the next phase from `tasks/BACKLOG.md`.*
 
-**Goal**: drop a broker teaser or CIM PDF onto `/listings/new`, get the same auto-filled form as Phase 1b. Reuses the `extract_listing()` pipeline; only the parsing layer is new.
+**Two natural next moves:**
 
-**Done when**: user uploads a real PDF, parser extracts text, Sonnet 4.6 returns a populated form, save works end-to-end.
+1. **Phase 2 — Operator agent + global chat.** Pivots to the conversational surface. Curate Operator KB sources (Stanford Search Fund Primer, *Buy Then Build*, *HBR Guide*, SBA SOP 50 10, IRS Pub 535), embed into Chroma, write router + operator prompts/tools, build the global chat panel. First time we exercise charter §9 risk #1 ("Knowledge-base quality is the project"). ~2 sessions.
 
-### [backend] — PDF parser + endpoint
-
-- [x] Add `pymupdf` (1.27.x) and `python-multipart` (0.0.27) deps.
-- [x] `silvercurrent/ingestion/pdfs.py` — `extract_text_from_pdf(content: bytes) -> str` and `PDFParseError`. Joins page text with `\n\n` separators. Rejects sparse text (< 200 chars) as likely scanned/image-only with a "paste text instead" hint. No OCR.
-- [x] `Settings.pdf_max_bytes = 20_000_000` (20 MB cap).
-- [x] `POST /api/listings/extract-pdf` — multipart upload (`file` field via `Annotated[UploadFile, File()]`). 0-byte → 400, over-cap → 413, parse failure → 400, ExtractionError → 502. Reuses `extract_listing()` so the response shape is identical to `/extract`.
-- [x] 10 tests: parser unit tests (single page, multi-page, garbage bytes, sparse text), endpoint tests (happy path with mocked Anthropic, empty file 400, over-cap 413, garbage 400, scanned 400). Tests synthesize PDFs in-memory via `pymupdf.open()` + `insert_textbox()` — no fixture files committed.
-- [x] Gates: pytest (36 pass total), ruff check + format, mypy --strict (26 source files) — all green.
-
-### [frontend] — PDF upload tab
-
-- [x] `apiPostMultipart<T>(path, formData)` helper in `lib/api.ts`. Lets the browser set `Content-Type` with the boundary.
-- [x] `ListingForm` extract panel grows a third tab: **Upload PDF**. File `<Input type="file">` with `accept="application/pdf"`, shows filename + size after selection. On Extract, builds `FormData`, POSTs to `/api/listings/extract-pdf`, populates form same as text/URL modes. PDF source labeled `"pdf"` (not `"paste"`).
-- [x] Gates: pnpm lint, pnpm build — green.
-
-### Closeout
-
-- [ ] **Live smoke** with a real broker PDF (~$0.05): drop a PDF, verify auto-fill, save, view detail.
-- [ ] Session note `docs/sessions/2026-05-05-phase-1c-pdf.md`.
-- [ ] Move Phase 1c to `tasks/DONE.md`.
-
----
-
-## What comes after Phase 1c
-
-- **Phase 2 — Operator agent + global chat.** Pivot to the conversational surface. Curate Operator KB sources, embed into Chroma, write router + operator prompts/tools, build the global chat panel.
-- **Phase 3 — Analyst agent + Deal Sheet + "Run Analysis" button.** First place `docs/criteria.md` is read; user fills it before this phase starts.
-- **Phase 4 — Email ingestion.**
+2. **Phase 3 — Analyst agent + Deal Sheet + "Run Analysis" button.** Keeps the listing thread hot. **Pre-work**: Mr. Alonso fills `docs/criteria.md` with real acquisition criteria (industry, geography, SDE band, etc.) — Phase 3 reads this file on every Analyst pass. Then: Analyst tools (valuation, multiples, DSCR, capital-stack, projections, red-flags, criteria scoring) + system prompt + Deal Sheet rendering. ~2–3 sessions.
