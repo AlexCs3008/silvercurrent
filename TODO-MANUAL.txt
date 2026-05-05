@@ -1,0 +1,55 @@
+Things I have to manually do
+============================
+
+This file is the unblocking-list. Anything Claude can't do headlessly (form-gated downloads, paid books, account-required services, physical credentials) lands here. Cross items off when done. New items append at the bottom with a date.
+
+Format per item:
+  [ ] (YYYY-MM-DD added) <what to do> — <why> — <where it goes>
+
+
+Knowledge base — Operator corpus
+--------------------------------
+
+[ ] (2026-05-05) Download Stanford GSB Search Fund Primer (current version).
+    - Where: https://www.gsb.stanford.edu/faculty-research/case-studies/primer-search-funds-practical-guide-entrepreneurs-embarking-search
+    - Action: fill the form on that page, download the PDF.
+    - Drop into: corpus/operator/stanford_search_fund_primer.pdf
+    - Then run: cd backend && uv run python ../scripts/ingest_operator_corpus.py --rebuild
+    - Then add a row to: docs/knowledge/operator-sources.md
+    - Why: canonical academic intro to ETA / search-fund mechanics. Stanford CDN blocks headless fetches and the primer is gated behind a form anyway.
+
+[ ] (2026-05-05) Find a working URL for "Stanford CES — Search Funds: Best Practices for the Search Phase" or skip if the Primer covers it.
+    - The URL I found (gsb.stanford.edu/sites/gsb/files/ces-search-funds-best-practices-search-phase.pdf) returned 404; doc may have been removed/moved. There's a Wayback Machine archive at swap.stanford.edu but headless fetches were blocked.
+    - If you stumble on it via Google, drop it in corpus/operator/ and update the inventory. Otherwise the Primer (above) is the higher-priority Stanford doc.
+
+[ ] (2026-05-05) Buy or borrow *Buy Then Build* (Walker Deibel).
+    - If you can get a clean text/PDF version (legitimate purchase, then export), drop into corpus/operator/buy_then_build.pdf (or .md after cleanup).
+    - Why: hands-on operator perspective on ETA. Recommended in operator-sources.md as a priority next-add.
+
+[ ] (2026-05-05) Buy or borrow *HBR Guide to Buying a Small Business* (Ruback & Yudkoff).
+    - Same drill as Buy Then Build. corpus/operator/hbr_guide_buying_small_business.pdf
+    - Why: mainstream practitioner reference; complements Deibel's perspective.
+
+
+Knowledge base — Analyst corpus (Phase 3, not wired up yet)
+-----------------------------------------------------------
+
+The analyst collection / ingestion script doesn't exist yet — it lands in Phase 3. Park these here so they're queued when the time comes:
+
+[ ] (2026-05-05) Stanford GSB 2024 Search Fund Study.
+    - https://cdn.prod.website-files.com/6455268783d6938b9451ea80/669fbcb3e5f07cc9a6093751_StanfordGSB_Study_2024.pdf
+    - This URL is on a third-party CDN (Webflow), should be fetchable headlessly when Phase 3 ingestion is built.
+    - Why: IRR / ROIC / time-to-acquisition data on 681 search funds through 2023. Reference data for the Analyst.
+
+[ ] (2026-05-05) IBBA Market Pulse — most recent quarter highlights.
+    - https://www.ibba.org/resource-center/industry-research/
+    - Public highlights only; full executive report is participants-only.
+    - Why: quarterly multiples by Main Street ($0–2M) vs. Lower Middle Market ($2–50M). Reference for valuation sanity checks.
+
+
+Pre-Phase-3 prep
+----------------
+
+[ ] (2026-05-05) Fill in docs/criteria.md with real values before Phase 3 starts.
+    - Why: the Analyst injects this on every pass. Confident-default placeholders would corrupt early output.
+    - Memory note: Claude knows to leave the existing <TODO> placeholders alone until you do this.

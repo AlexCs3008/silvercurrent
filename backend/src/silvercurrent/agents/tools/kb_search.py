@@ -46,7 +46,15 @@ def _sync_search(query: str, k: int) -> Envelope:
     if collection.count() == 0:
         return fail("Operator collection is empty. Add files to `corpus/operator/` and run the ingest script.")
 
-    result = collection.query(query_texts=[query], n_results=min(k, MAX_K))
+    # Over-fetch so we can drop near-duplicates and still return `k` distinct passages.
+    # The SBA SOP (and similar reference docs) repeats identical requirement paragraphs
+    # across loan-program subtypes; without this filter the top-k is often 3–4 copies
+    # of the same paragraph, the model re-searches looking for variety, and the
+    # tool-loop cap fires. Fingerprint = lower-cased first 200 chars with whitespace
+    # collapsed — catches both exact duplicates and overlap-driven near-dupes.
+    capped_k = min(k, MAX_K)
+    overfetch = min(capped_k * 4, MAX_K * 2)
+    result = collection.query(query_texts=[query], n_results=overfetch)
     raw_docs = result.get("documents")
     raw_metas = result.get("metadatas")
     raw_dists = result.get("distances")
@@ -55,8 +63,13 @@ def _sync_search(query: str, k: int) -> Envelope:
     metas = list(raw_metas[0]) if raw_metas else []
     dists = list(raw_dists[0]) if raw_dists else []
 
+    seen_fingerprints: set[str] = set()
     passages: list[dict[str, Any]] = []
     for i, doc in enumerate(docs):
+        fingerprint = " ".join(doc.lower().split())[:200]
+        if fingerprint in seen_fingerprints:
+            continue
+        seen_fingerprints.add(fingerprint)
         meta = metas[i] if i < len(metas) else {}
         dist = float(dists[i]) if i < len(dists) else None
         passages.append(
@@ -68,8 +81,10 @@ def _sync_search(query: str, k: int) -> Envelope:
                 "cosine_distance": dist,
             }
         )
+        if len(passages) >= capped_k:
+            break
 
-    return ok({"query": query, "k": min(k, MAX_K), "passages": passages})
+    return ok({"query": query, "k": capped_k, "passages": passages})
 
 
 async def search_knowledge_base(query: str, k: int = DEFAULT_K) -> Envelope:
