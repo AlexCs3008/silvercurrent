@@ -52,6 +52,9 @@ class Listing(Base):
     narrative: Mapped[str | None] = mapped_column(Text, nullable=True)
     reason_for_selling: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Original ingested text — kept so we can re-extract with tuned prompts later.
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Broker
     broker_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     broker_contact: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -5,17 +5,69 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from silvercurrent.db.models import Listing
 from silvercurrent.db.session import get_session
+from silvercurrent.ingestion.listings import (
+    ExtractionError,
+    ExtractionResult,
+    extract_listing,
+    fetch_url,
+)
 from silvercurrent.schemas.listings import ListingCreate, ListingRead, ListingStatus, ListingUpdate
 
 router = APIRouter(prefix="/api/listings", tags=["listings"])
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+
+class ListingExtractionRequest(BaseModel):
+    """Body for `POST /api/listings/extract`. Exactly one of url or text must be set."""
+
+    source_url: str | None = None
+    source_text: str | None = None
+
+    @model_validator(mode="after")
+    def _require_one(self) -> ListingExtractionRequest:
+        if not (self.source_url or self.source_text):
+            raise ValueError("provide either source_url or source_text")
+        return self
+
+
+@router.post("/extract", response_model=ExtractionResult)
+async def extract_from_source(payload: ListingExtractionRequest) -> ExtractionResult:
+    """Extract listing fields from a URL or pasted text via the LLM.
+
+    Does not save. The frontend uses the response to populate the form, then
+    the user reviews and POSTs to `/api/listings` to actually persist.
+    """
+    if payload.source_text:
+        text = payload.source_text
+        url = payload.source_url
+    else:
+        # source_url must be set per the validator
+        assert payload.source_url is not None
+        url = payload.source_url
+        try:
+            text = await fetch_url(url)
+        except httpx.HTTPError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"failed to fetch {url}: {e}. "
+                    "Many aggregator sites block automated fetches — try pasting the page text instead."
+                ),
+            ) from e
+
+    try:
+        return await extract_listing(source_text=text, source_url=url)
+    except ExtractionError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
 
 @router.get("", response_model=list[ListingRead])

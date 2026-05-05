@@ -18,6 +18,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiPatch, apiPost } from "@/lib/api";
 import {
   LISTING_STATUSES,
+  type ExtractionResult,
+  type ExtractionUsage,
   type Listing,
   type ListingCreate,
   type ListingStatus,
@@ -27,6 +29,8 @@ import {
 type ListingFormProps = {
   /** When provided, the form is in edit mode and PATCHes this listing. */
   initial?: Listing;
+  /** When true, render the URL/text extract panel above the form. */
+  enableExtraction?: boolean;
 };
 
 type FormState = {
@@ -42,6 +46,7 @@ type FormState = {
   revenue: string;
   narrative: string;
   reason_for_selling: string;
+  raw_text: string;
   broker_name: string;
   broker_contact: string;
   status: ListingStatus;
@@ -63,11 +68,45 @@ function fromListing(l: Listing | undefined): FormState {
     revenue: l?.revenue?.toString() ?? "",
     narrative: l?.narrative ?? "",
     reason_for_selling: l?.reason_for_selling ?? "",
+    raw_text: l?.raw_text ?? "",
     broker_name: l?.broker_name ?? "",
     broker_contact: l?.broker_contact ?? "",
     status: l?.status ?? "new",
     notes: l?.notes ?? "",
     tags: (l?.tags ?? []).join(", "),
+  };
+}
+
+function deriveSource(url: string | null): string {
+  if (!url) return "paste";
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "url";
+  }
+}
+
+function applyExtraction(prev: FormState, result: ExtractionResult): FormState {
+  const e = result.extracted;
+  return {
+    ...prev,
+    source: deriveSource(result.source_url),
+    source_url: result.source_url ?? prev.source_url,
+    business_name: e.business_name,
+    industry: e.industry ?? "",
+    naics_code: e.naics_code ?? "",
+    location: e.location ?? "",
+    asking_price: e.asking_price?.toString() ?? "",
+    sde: e.sde?.toString() ?? "",
+    cash_flow: e.cash_flow?.toString() ?? "",
+    revenue: e.revenue?.toString() ?? "",
+    narrative: e.narrative ?? "",
+    reason_for_selling: e.reason_for_selling ?? "",
+    raw_text: result.raw_text,
+    broker_name: e.broker_name ?? "",
+    broker_contact: e.broker_contact ?? "",
+    tags: e.tags.join(", "),
+    // status stays whatever the user has set (default "new")
   };
 }
 
@@ -98,6 +137,7 @@ function buildPayload(state: FormState): ListingCreate {
     revenue: toMoney(state.revenue),
     narrative: toNullableString(state.narrative),
     reason_for_selling: toNullableString(state.reason_for_selling),
+    raw_text: toNullableString(state.raw_text),
     broker_name: toNullableString(state.broker_name),
     broker_contact: toNullableString(state.broker_contact),
     status: state.status,
@@ -116,14 +156,54 @@ function buildPayload(state: FormState): ListingCreate {
  *   listing's detail page.
  * - If `initial` is provided, PATCHes the listing and redirects back to detail.
  */
-export function ListingForm({ initial }: ListingFormProps) {
+export function ListingForm({ initial, enableExtraction }: ListingFormProps) {
   const router = useRouter();
   const [state, setState] = useState<FormState>(() => fromListing(initial));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Extract panel state — only used when enableExtraction is true.
+  const [extractMode, setExtractMode] = useState<"text" | "url">("text");
+  const [extractText, setExtractText] = useState("");
+  const [extractUrl, setExtractUrl] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  const [lastUsage, setLastUsage] = useState<ExtractionUsage | null>(null);
+
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setState((s) => ({ ...s, [key]: value }));
+
+  async function handleExtract() {
+    setExtractError(null);
+    if (extractMode === "text" && !extractText.trim()) {
+      setExtractError("Paste the listing text first.");
+      return;
+    }
+    if (extractMode === "url" && !extractUrl.trim()) {
+      setExtractError("Enter a URL first.");
+      return;
+    }
+
+    setExtracting(true);
+    try {
+      const body =
+        extractMode === "text"
+          ? { source_text: extractText }
+          : { source_url: extractUrl };
+      const result = await apiPost<ExtractionResult>(
+        "/api/listings/extract",
+        body,
+      );
+      setState((prev) => applyExtraction(prev, result));
+      setLastUsage(result.usage);
+    } catch (err) {
+      setExtractError(
+        err instanceof Error ? err.message : "Extraction failed.",
+      );
+    } finally {
+      setExtracting(false);
+    }
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -157,7 +237,104 @@ export function ListingForm({ initial }: ListingFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
+      {enableExtraction && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              Auto-fill from URL or pasted text
+            </CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Pasted text is the reliable path — many aggregator sites block
+              automated URL fetches. Review the populated form before saving.
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setExtractMode("text")}
+                className={`rounded-full px-3 py-1 uppercase tracking-wide transition ${
+                  extractMode === "text"
+                    ? "bg-foreground text-background"
+                    : "bg-muted text-muted-foreground hover:bg-muted/70"
+                }`}
+              >
+                Paste text
+              </button>
+              <button
+                type="button"
+                onClick={() => setExtractMode("url")}
+                className={`rounded-full px-3 py-1 uppercase tracking-wide transition ${
+                  extractMode === "url"
+                    ? "bg-foreground text-background"
+                    : "bg-muted text-muted-foreground hover:bg-muted/70"
+                }`}
+              >
+                Paste URL
+              </button>
+            </div>
+
+            {extractMode === "text" ? (
+              <Field
+                label="Listing text"
+                htmlFor="extract_text"
+                hint="The broker's description, copied from the page or email."
+              >
+                <Textarea
+                  id="extract_text"
+                  rows={6}
+                  value={extractText}
+                  onChange={(e) => setExtractText(e.target.value)}
+                  placeholder="Paste the listing description here…"
+                />
+              </Field>
+            ) : (
+              <Field
+                label="Listing URL"
+                htmlFor="extract_url"
+                hint="If the fetch fails, switch to paste-text mode and copy the page text in."
+              >
+                <Input
+                  id="extract_url"
+                  type="url"
+                  value={extractUrl}
+                  onChange={(e) => setExtractUrl(e.target.value)}
+                  placeholder="https://…"
+                />
+              </Field>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                onClick={handleExtract}
+                disabled={extracting}
+              >
+                {extracting ? "Extracting…" : "Extract"}
+              </Button>
+              {lastUsage && (
+                <span className="text-xs text-muted-foreground">
+                  Extracted via{" "}
+                  <span className="font-mono">{lastUsage.model}</span> ·{" "}
+                  {lastUsage.input_tokens.toLocaleString()} in /{" "}
+                  {lastUsage.output_tokens.toLocaleString()} out tokens
+                </span>
+              )}
+              {extractError && (
+                <span
+                  className="text-sm text-red-600 dark:text-red-400"
+                  role="alert"
+                >
+                  {extractError}
+                </span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Identity</CardTitle>
@@ -381,7 +558,8 @@ export function ListingForm({ initial }: ListingFormProps) {
           Cancel
         </Button>
       </div>
-    </form>
+      </form>
+    </div>
   );
 }
 

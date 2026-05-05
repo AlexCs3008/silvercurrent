@@ -29,6 +29,7 @@ class ListingCreate(BaseModel):
 
     narrative: str | None = None
     reason_for_selling: str | None = None
+    raw_text: str | None = None
 
     broker_name: str | None = Field(default=None, max_length=256)
     broker_contact: str | None = None
@@ -58,6 +59,7 @@ class ListingUpdate(BaseModel):
 
     narrative: str | None = None
     reason_for_selling: str | None = None
+    raw_text: str | None = None
 
     broker_name: str | None = Field(default=None, max_length=256)
     broker_contact: str | None = None
@@ -91,6 +93,7 @@ class ListingRead(BaseModel):
 
     narrative: str | None
     reason_for_selling: str | None
+    raw_text: str | None
 
     broker_name: str | None
     broker_contact: str | None

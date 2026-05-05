@@ -36,6 +36,7 @@ export type Listing = {
 
   narrative: string | null;
   reason_for_selling: string | null;
+  raw_text: string | null;
 
   broker_name: string | null;
   broker_contact: string | null;
@@ -43,6 +44,37 @@ export type Listing = {
   status: ListingStatus;
   notes: string | null;
   tags: string[];
+};
+
+/** LLM-extracted subset of a listing — what `POST /api/listings/extract` returns. */
+export type ExtractedListing = {
+  business_name: string;
+  industry: string | null;
+  naics_code: string | null;
+  location: string | null;
+  asking_price: number | null;
+  sde: number | null;
+  cash_flow: number | null;
+  revenue: number | null;
+  narrative: string | null;
+  reason_for_selling: string | null;
+  broker_name: string | null;
+  broker_contact: string | null;
+  tags: string[];
+  status: ListingStatus;
+};
+
+export type ExtractionUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  model: string;
+};
+
+export type ExtractionResult = {
+  extracted: ExtractedListing;
+  raw_text: string;
+  source_url: string | null;
+  usage: ExtractionUsage;
 };
 
 /** Body for POST `/api/listings`. Mirrors `ListingCreate` server-side. */
@@ -59,6 +91,7 @@ export type ListingCreate = {
   revenue?: number | null;
   narrative?: string | null;
   reason_for_selling?: string | null;
+  raw_text?: string | null;
   broker_name?: string | null;
   broker_contact?: string | null;
   status?: ListingStatus;
