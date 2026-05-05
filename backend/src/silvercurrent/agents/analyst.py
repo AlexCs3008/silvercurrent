@@ -22,6 +22,7 @@ from silvercurrent.agents.tools.active_listing import get_active_listing
 from silvercurrent.agents.tools.criteria import get_user_criteria
 from silvercurrent.agents.tools.deal_metrics import compute_deal_metrics
 from silvercurrent.config import get_settings
+from silvercurrent.db.models import ChatTurn
 
 # Iteration cap. Three tool calls cover the happy path; a couple extra
 # iterations leave room for a retry without unbounded looping.
@@ -29,6 +30,7 @@ MAX_ITERATIONS = 6
 MAX_OUTPUT_TOKENS = 4096
 
 ANALYST_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "analyst.md"
+ANALYST_CHAT_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "analyst-chat.md"
 
 ANALYST_TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
@@ -80,9 +82,24 @@ class AnalystResult:
     iterations: int
 
 
-def _load_system_prompt() -> str:
-    """Read the analyst system prompt from `prompts/analyst.md`."""
+def _load_batch_prompt() -> str:
+    """Read the batch (Deal Sheet) system prompt from `prompts/analyst.md`."""
     return ANALYST_PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def _load_chat_prompt() -> str:
+    """Read the conversational system prompt from `prompts/analyst-chat.md`."""
+    return ANALYST_CHAT_PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def _format_history(turns: list[ChatTurn]) -> list[dict[str, Any]]:
+    """Convert ChatTurn rows into the Anthropic messages shape."""
+    out: list[dict[str, Any]] = []
+    for t in turns:
+        if t.role not in ("user", "assistant"):
+            continue
+        out.append({"role": t.role, "content": t.content})
+    return out
 
 
 class AnalystAgent:
@@ -102,8 +119,8 @@ class AnalystAgent:
         self._model = model or "claude-sonnet-4-6"
 
     async def analyze(self, *, listing_id: UUID) -> AnalystResult:
-        """Run one Deal Sheet pass against the given listing."""
-        system_prompt = _load_system_prompt()
+        """Run one Deal Sheet pass against the given listing (batch mode)."""
+        system_prompt = _load_batch_prompt()
         messages: list[dict[str, Any]] = [
             {
                 "role": "user",
@@ -114,7 +131,55 @@ class AnalystAgent:
                 ),
             }
         ]
+        return await self._run_loop(
+            system_prompt=system_prompt,
+            messages=messages,
+            listing_id=listing_id,
+            cap_message=(
+                "Analyst could not converge on a Deal Sheet within the iteration cap. "
+                "This usually means a tool kept failing — check the listing exists and the "
+                "criteria file is readable."
+            ),
+        )
 
+    async def chat(
+        self,
+        *,
+        user_message: str,
+        history: list[ChatTurn],
+        listing_id: UUID,
+    ) -> AnalystResult:
+        """Conversational mode: answer one user turn about the active listing.
+
+        Uses the same three tools as batch mode, but a different system prompt
+        (`analyst-chat.md`) that directs short, focused answers instead of the
+        full Deal Sheet. The `deal_sheet` field on AnalystResult holds the
+        conversational reply text — naming is shared across modes.
+        """
+        system_prompt = _load_chat_prompt()
+        messages: list[dict[str, Any]] = [
+            *_format_history(history),
+            {"role": "user", "content": user_message},
+        ]
+        return await self._run_loop(
+            system_prompt=system_prompt,
+            messages=messages,
+            listing_id=listing_id,
+            cap_message=(
+                "I called tools repeatedly without converging on an answer. "
+                "Try rephrasing the question or breaking it into smaller pieces."
+            ),
+        )
+
+    async def _run_loop(
+        self,
+        *,
+        system_prompt: str,
+        messages: list[dict[str, Any]],
+        listing_id: UUID,
+        cap_message: str,
+    ) -> AnalystResult:
+        """Shared bounded tool-loop runner used by both batch and chat modes."""
         cumulative_input = 0
         cumulative_output = 0
 
@@ -151,11 +216,7 @@ class AnalystAgent:
             messages.append({"role": "user", "content": tool_result_blocks})
 
         return AnalystResult(
-            deal_sheet=(
-                "Analyst could not converge on a Deal Sheet within the iteration cap. "
-                "This usually means a tool kept failing — check the listing exists and the "
-                "criteria file is readable."
-            ),
+            deal_sheet=cap_message,
             usage=AgentUsage(
                 input_tokens=cumulative_input,
                 output_tokens=cumulative_output,

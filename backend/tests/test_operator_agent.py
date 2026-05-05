@@ -17,10 +17,37 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from silvercurrent.agents.operator import OperatorAgent
+from silvercurrent.agents.router import RouterUsage, RoutingDecision
 from silvercurrent.agents.tools._envelope import fail, ok
 from silvercurrent.db.models import Base, ChatTurn
 from silvercurrent.db.session import get_session
 from silvercurrent.main import app
+
+
+def _force_router_to(agent: str = "operator") -> type:
+    """Build a stand-in RouterAgent class that always returns the given route.
+
+    Tests that focus on the specialist's behavior (not classification) use this
+    so the Router doesn't need to hit Anthropic.
+    """
+
+    decision = RoutingDecision(
+        agent=agent,  # type: ignore[arg-type]
+        rationale="forced for test",
+        clarification_question=None,
+        out_of_scope_reply=None,
+        usage=RouterUsage(input_tokens=10, output_tokens=5, model="test-router"),
+    )
+
+    class _FakeRouter:
+        def __init__(self, *_: Any, **__: Any) -> None:
+            pass
+
+        async def route(self, **_: Any) -> RoutingDecision:
+            return decision
+
+    return _FakeRouter
+
 
 # --- Mock helpers -------------------------------------------------------------
 
@@ -269,6 +296,7 @@ async def test_chat_endpoint_persists_both_turns(chat_client: AsyncClient, monke
         return real_operator_agent(client=fake_client, session=kwargs.get("session"), model="test-model")
 
     monkeypatch.setattr(chat_module, "OperatorAgent", mock_agent)
+    monkeypatch.setattr(chat_module, "RouterAgent", _force_router_to("operator"))
 
     response = await chat_client.post(
         "/api/chat",
@@ -279,8 +307,11 @@ async def test_chat_endpoint_persists_both_turns(chat_client: AsyncClient, monke
     body = response.json()
     assert body["user_turn"]["content"] == "Hello"
     assert body["assistant_turn"]["content"] == "Hi back."
+    assert body["agent_used"] == "operator"
     assert body["usage"]["model"] == "test-model"
     assert body["usage"]["iterations"] == 1
+    assert body["routing"]["agent"] == "operator"
+    assert body["routing"]["model"] == "test-router"
 
     # Both turns should now be retrievable via GET.
     list_response = await chat_client.get("/api/chat?scope=global")
@@ -292,14 +323,25 @@ async def test_chat_endpoint_persists_both_turns(chat_client: AsyncClient, monke
 
 
 @pytest.mark.asyncio
-async def test_chat_endpoint_rejects_nonglobal_scope(chat_client: AsyncClient) -> None:
-    """Phase 2 only supports scope='global'."""
+async def test_chat_endpoint_rejects_unknown_scope(chat_client: AsyncClient) -> None:
+    """Scope must be 'global' or 'listing:<uuid>' — anything else 400s."""
     response = await chat_client.post(
         "/api/chat",
-        json={"scope": "listing:abc", "message": "Hi"},
+        json={"scope": "weird-scope", "message": "Hi"},
     )
     assert response.status_code == 400
     assert "global" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_chat_endpoint_rejects_invalid_listing_uuid(chat_client: AsyncClient) -> None:
+    """`listing:<not-a-uuid>` is a 400, not a 500."""
+    response = await chat_client.post(
+        "/api/chat",
+        json={"scope": "listing:not-a-uuid", "message": "Hi"},
+    )
+    assert response.status_code == 400
+    assert "invalid listing id" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -346,6 +388,7 @@ async def test_chat_endpoint_loads_existing_history(
         return real_operator_agent(client=fake_client, session=kwargs.get("session"), model="test-model")
 
     monkeypatch.setattr(chat_module, "OperatorAgent", mock_agent)
+    monkeypatch.setattr(chat_module, "RouterAgent", _force_router_to("operator"))
 
     response = await chat_client.post("/api/chat", json={"scope": "global", "message": "follow-up"})
     assert response.status_code == 200

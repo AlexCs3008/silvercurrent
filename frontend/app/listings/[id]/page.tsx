@@ -3,8 +3,10 @@ import { notFound } from "next/navigation";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ChatPanel } from "@/components/chat-panel";
 import { ListingActions } from "@/components/listing-actions";
 import { ApiError, apiGet } from "@/lib/api";
+import { type ChatTurn } from "@/lib/chat";
 import { formatDate, formatMoney, type Listing } from "@/lib/listings";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +17,7 @@ type PageProps = {
 
 export default async function ListingDetailPage({ params }: PageProps) {
   const { id } = await params;
+  const scope = `listing:${id}`;
 
   let listing: Listing;
   try {
@@ -24,6 +27,23 @@ export default async function ListingDetailPage({ params }: PageProps) {
       notFound();
     }
     throw err;
+  }
+
+  // Fetch listing-scoped chat history alongside the listing. Failure here
+  // shouldn't block the page — the chat panel just opens empty.
+  let initialTurns: ChatTurn[] = [];
+  let chatError: string | null = null;
+  try {
+    initialTurns = await apiGet<ChatTurn[]>(
+      `/api/chat?scope=${encodeURIComponent(scope)}`,
+    );
+  } catch (err) {
+    chatError =
+      err instanceof ApiError
+        ? `Backend returned ${err.status}`
+        : err instanceof Error
+          ? err.message
+          : "Could not load chat history.";
   }
 
   return (
@@ -155,6 +175,33 @@ export default async function ListingDetailPage({ params }: PageProps) {
         Added {formatDate(listing.created_at)} · last updated{" "}
         {formatDate(listing.updated_at)}
       </p>
+
+      <div className="mt-4 flex flex-col gap-3 border-t border-border pt-6">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">
+            Chat about this listing
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The Router classifies each message and dispatches to the Analyst
+            (this deal) or the Operator (general ETA mechanics).
+          </p>
+        </div>
+        {chatError ? (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+          >
+            <p className="font-medium">Couldn’t load chat history.</p>
+            <p className="mt-1 font-mono text-xs">{chatError}</p>
+          </div>
+        ) : (
+          <ChatPanel
+            scope={scope}
+            initialTurns={initialTurns}
+            variant="listing"
+          />
+        )}
+      </div>
     </div>
   );
 }

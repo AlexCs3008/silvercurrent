@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 ChatRole = Literal["user", "assistant"]
+RoutedAgent = Literal["operator", "analyst", "clarify", "out_of_scope"]
 
 
 class ChatRequest(BaseModel):
@@ -39,9 +40,21 @@ class ChatUsage(BaseModel):
     iterations: int
 
 
+class RoutingInfo(BaseModel):
+    """Router's classification decision for this turn."""
+
+    agent: RoutedAgent
+    rationale: str
+    model: str
+    input_tokens: int
+    output_tokens: int
+
+
 class ChatResponse(BaseModel):
     """Response body for `POST /api/chat`."""
 
     user_turn: ChatTurnRead
     assistant_turn: ChatTurnRead
+    agent_used: RoutedAgent
     usage: ChatUsage
+    routing: RoutingInfo
