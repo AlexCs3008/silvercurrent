@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from silvercurrent.api.analyze import router as analyze_router
 from silvercurrent.api.chat import router as chat_router
 from silvercurrent.api.listings import router as listings_router
 
@@ -22,6 +23,7 @@ app.add_middleware(
 
 app.include_router(listings_router)
 app.include_router(chat_router)
+app.include_router(analyze_router)
 
 
 @app.get("/api/health")
