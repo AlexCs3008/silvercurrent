@@ -7,6 +7,8 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from silvercurrent.api.listings import router as listings_router
+
 app = FastAPI(title="Silvercurrent", version="0.1.0")
 
 app.add_middleware(
@@ -16,6 +18,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(listings_router)
 
 
 @app.get("/api/health")

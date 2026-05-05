@@ -1,0 +1,408 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { apiPatch, apiPost } from "@/lib/api";
+import {
+  LISTING_STATUSES,
+  type Listing,
+  type ListingCreate,
+  type ListingStatus,
+  type ListingUpdate,
+} from "@/lib/listings";
+
+type ListingFormProps = {
+  /** When provided, the form is in edit mode and PATCHes this listing. */
+  initial?: Listing;
+};
+
+type FormState = {
+  source: string;
+  source_url: string;
+  business_name: string;
+  industry: string;
+  naics_code: string;
+  location: string;
+  asking_price: string;
+  sde: string;
+  cash_flow: string;
+  revenue: string;
+  narrative: string;
+  reason_for_selling: string;
+  broker_name: string;
+  broker_contact: string;
+  status: ListingStatus;
+  notes: string;
+  tags: string;
+};
+
+function fromListing(l: Listing | undefined): FormState {
+  return {
+    source: l?.source ?? "manual",
+    source_url: l?.source_url ?? "",
+    business_name: l?.business_name ?? "",
+    industry: l?.industry ?? "",
+    naics_code: l?.naics_code ?? "",
+    location: l?.location ?? "",
+    asking_price: l?.asking_price?.toString() ?? "",
+    sde: l?.sde?.toString() ?? "",
+    cash_flow: l?.cash_flow?.toString() ?? "",
+    revenue: l?.revenue?.toString() ?? "",
+    narrative: l?.narrative ?? "",
+    reason_for_selling: l?.reason_for_selling ?? "",
+    broker_name: l?.broker_name ?? "",
+    broker_contact: l?.broker_contact ?? "",
+    status: l?.status ?? "new",
+    notes: l?.notes ?? "",
+    tags: (l?.tags ?? []).join(", "),
+  };
+}
+
+function toMoney(s: string): number | null {
+  const trimmed = s.trim();
+  if (trimmed === "") return null;
+  const cleaned = trimmed.replace(/[$,\s]/g, "");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+function toNullableString(s: string): string | null {
+  const trimmed = s.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+function buildPayload(state: FormState): ListingCreate {
+  return {
+    source: state.source.trim() || "manual",
+    source_url: toNullableString(state.source_url),
+    business_name: state.business_name.trim(),
+    industry: toNullableString(state.industry),
+    naics_code: toNullableString(state.naics_code),
+    location: toNullableString(state.location),
+    asking_price: toMoney(state.asking_price),
+    sde: toMoney(state.sde),
+    cash_flow: toMoney(state.cash_flow),
+    revenue: toMoney(state.revenue),
+    narrative: toNullableString(state.narrative),
+    reason_for_selling: toNullableString(state.reason_for_selling),
+    broker_name: toNullableString(state.broker_name),
+    broker_contact: toNullableString(state.broker_contact),
+    status: state.status,
+    notes: toNullableString(state.notes),
+    tags: state.tags
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean),
+  };
+}
+
+/**
+ * Form for creating or editing a listing.
+ *
+ * - If `initial` is omitted, POSTs to `/api/listings` and redirects to the new
+ *   listing's detail page.
+ * - If `initial` is provided, PATCHes the listing and redirects back to detail.
+ */
+export function ListingForm({ initial }: ListingFormProps) {
+  const router = useRouter();
+  const [state, setState] = useState<FormState>(() => fromListing(initial));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+    setState((s) => ({ ...s, [key]: value }));
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+
+    if (!state.business_name.trim()) {
+      setError("Business name is required.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const payload = buildPayload(state);
+      if (initial) {
+        const updatePayload: ListingUpdate = payload;
+        const updated = await apiPatch<Listing>(
+          `/api/listings/${initial.id}`,
+          updatePayload,
+        );
+        router.push(`/listings/${updated.id}`);
+        router.refresh();
+      } else {
+        const created = await apiPost<Listing>("/api/listings", payload);
+        router.push(`/listings/${created.id}`);
+        router.refresh();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Submission failed.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Identity</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <Field label="Business name" required htmlFor="business_name">
+            <Input
+              id="business_name"
+              value={state.business_name}
+              onChange={(e) => update("business_name", e.target.value)}
+              required
+              placeholder="Acme HVAC"
+            />
+          </Field>
+          <Field label="Industry" htmlFor="industry">
+            <Input
+              id="industry"
+              value={state.industry}
+              onChange={(e) => update("industry", e.target.value)}
+              placeholder="HVAC services"
+            />
+          </Field>
+          <Field label="Location" htmlFor="location">
+            <Input
+              id="location"
+              value={state.location}
+              onChange={(e) => update("location", e.target.value)}
+              placeholder="Miami, FL"
+            />
+          </Field>
+          <Field label="NAICS code" htmlFor="naics_code">
+            <Input
+              id="naics_code"
+              value={state.naics_code}
+              onChange={(e) => update("naics_code", e.target.value)}
+              placeholder="238220"
+              maxLength={8}
+            />
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Financials</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <Field
+            label="Asking price (USD)"
+            htmlFor="asking_price"
+            hint="Whole dollars."
+          >
+            <Input
+              id="asking_price"
+              inputMode="numeric"
+              value={state.asking_price}
+              onChange={(e) => update("asking_price", e.target.value)}
+              placeholder="1200000"
+            />
+          </Field>
+          <Field label="SDE (USD/yr)" htmlFor="sde">
+            <Input
+              id="sde"
+              inputMode="numeric"
+              value={state.sde}
+              onChange={(e) => update("sde", e.target.value)}
+              placeholder="350000"
+            />
+          </Field>
+          <Field label="Cash flow (USD/yr)" htmlFor="cash_flow">
+            <Input
+              id="cash_flow"
+              inputMode="numeric"
+              value={state.cash_flow}
+              onChange={(e) => update("cash_flow", e.target.value)}
+              placeholder="380000"
+            />
+          </Field>
+          <Field label="Revenue (USD/yr)" htmlFor="revenue">
+            <Input
+              id="revenue"
+              inputMode="numeric"
+              value={state.revenue}
+              onChange={(e) => update("revenue", e.target.value)}
+              placeholder="2400000"
+            />
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Narrative</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <Field label="Description / pitch" htmlFor="narrative">
+            <Textarea
+              id="narrative"
+              rows={5}
+              value={state.narrative}
+              onChange={(e) => update("narrative", e.target.value)}
+              placeholder="What the broker is saying about the business…"
+            />
+          </Field>
+          <Field label="Reason for selling" htmlFor="reason_for_selling">
+            <Input
+              id="reason_for_selling"
+              value={state.reason_for_selling}
+              onChange={(e) => update("reason_for_selling", e.target.value)}
+              placeholder="Owner retiring."
+            />
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Broker</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <Field label="Broker name" htmlFor="broker_name">
+            <Input
+              id="broker_name"
+              value={state.broker_name}
+              onChange={(e) => update("broker_name", e.target.value)}
+              placeholder="Jane Broker"
+            />
+          </Field>
+          <Field
+            label="Broker contact"
+            htmlFor="broker_contact"
+            hint="Email / phone / firm — free-form."
+          >
+            <Input
+              id="broker_contact"
+              value={state.broker_contact}
+              onChange={(e) => update("broker_contact", e.target.value)}
+              placeholder="jane@example.com"
+            />
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Source & workflow</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <Field label="Source" htmlFor="source" hint="e.g. manual, bizbuysell">
+            <Input
+              id="source"
+              value={state.source}
+              onChange={(e) => update("source", e.target.value)}
+            />
+          </Field>
+          <Field label="Source URL" htmlFor="source_url">
+            <Input
+              id="source_url"
+              type="url"
+              value={state.source_url}
+              onChange={(e) => update("source_url", e.target.value)}
+              placeholder="https://…"
+            />
+          </Field>
+          <Field label="Status" htmlFor="status">
+            <Select
+              value={state.status}
+              onValueChange={(v) => update("status", v as ListingStatus)}
+            >
+              <SelectTrigger id="status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LISTING_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field
+            label="Tags"
+            htmlFor="tags"
+            hint="Comma-separated. e.g. fl, service, established"
+          >
+            <Input
+              id="tags"
+              value={state.tags}
+              onChange={(e) => update("tags", e.target.value)}
+            />
+          </Field>
+          <Field label="Notes" htmlFor="notes" className="md:col-span-2">
+            <Textarea
+              id="notes"
+              rows={4}
+              value={state.notes}
+              onChange={(e) => update("notes", e.target.value)}
+              placeholder="Your running notes — questions to ask, gut takes…"
+            />
+          </Field>
+        </CardContent>
+      </Card>
+
+      {error && (
+        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="flex items-center gap-3">
+        <Button type="submit" disabled={submitting}>
+          {submitting ? "Saving…" : initial ? "Save changes" : "Create listing"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => router.back()}
+          disabled={submitting}
+        >
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+type FieldProps = {
+  label: string;
+  htmlFor: string;
+  required?: boolean;
+  hint?: string;
+  className?: string;
+  children: React.ReactNode;
+};
+
+function Field({ label, htmlFor, required, hint, className, children }: FieldProps) {
+  return (
+    <div className={`flex flex-col gap-1.5 ${className ?? ""}`}>
+      <Label htmlFor={htmlFor}>
+        {label}
+        {required && <span className="ml-1 text-red-600">*</span>}
+      </Label>
+      {children}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}

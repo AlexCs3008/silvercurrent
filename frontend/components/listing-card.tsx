@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   Card,
   CardContent,
@@ -5,33 +7,55 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-
-export type ListingCardData = {
-  id: string;
-  source: string;
-  status: string;
-};
+import { StatusBadge } from "@/components/status-badge";
+import { formatDate, formatMoney, type Listing } from "@/lib/listings";
 
 type ListingCardProps = {
-  listing: ListingCardData;
+  listing: Listing;
 };
 
-/**
- * Skeleton card for an inventory listing. Real fields land with the data
- * model in Phase 1; this just proves the component layer compiles end-to-end.
- */
+/** A single listing in the inventory grid. Links to the detail page. */
 export function ListingCard({ listing }: ListingCardProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="font-mono text-sm">{listing.id}</CardTitle>
-        <CardDescription>
-          source: {listing.source} · status: {listing.status}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="text-sm text-muted-foreground">
-        Listing details will render here once the data model is wired up.
-      </CardContent>
-    </Card>
+    <Link
+      href={`/listings/${listing.id}`}
+      className="block rounded-xl outline-none ring-offset-2 transition focus-visible:ring-2 focus-visible:ring-foreground/30 hover:opacity-95"
+    >
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <CardTitle className="truncate text-base">
+                {listing.business_name || (
+                  <span className="italic text-muted-foreground">unnamed</span>
+                )}
+              </CardTitle>
+              <CardDescription className="mt-1 truncate text-xs">
+                {listing.industry ?? "industry —"}
+                {listing.location ? ` · ${listing.location}` : ""}
+              </CardDescription>
+            </div>
+            <StatusBadge status={listing.status} />
+          </div>
+        </CardHeader>
+        <CardContent className="text-sm">
+          <dl className="grid grid-cols-2 gap-y-1 text-xs">
+            <dt className="text-muted-foreground">Asking</dt>
+            <dd className="text-right font-mono">
+              {formatMoney(listing.asking_price)}
+            </dd>
+            <dt className="text-muted-foreground">SDE</dt>
+            <dd className="text-right font-mono">{formatMoney(listing.sde)}</dd>
+            <dt className="text-muted-foreground">Revenue</dt>
+            <dd className="text-right font-mono">
+              {formatMoney(listing.revenue)}
+            </dd>
+          </dl>
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            Added {formatDate(listing.created_at)} · {listing.source}
+          </p>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
