@@ -1,6 +1,8 @@
 # 0007 — Inbound email provider for the ingestion daemon
 
-*Status: proposed · 2026-05-05 · needs Mr. Alonso's pick before implementation starts*
+*Status: deferred · 2026-05-05 · revisit when manual paste/upload friction becomes the bottleneck*
+
+> **Deferral note (2026-05-05):** Mr. Alonso decided not to pick yet. For now he'll source listings himself via the web and use the existing paste / PDF upload flow to add them. The webhook-vs-IMAP trade-off depends on whether the system stays local or gets deployed, and that question isn't ripe. Reopen this ADR (status → `proposed`) when manual sourcing becomes the bottleneck — likely after several real listings have been processed and the rhythm reveals whether automation is worth the ops cost.
 
 ## Context
 
