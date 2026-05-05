@@ -1,0 +1,50 @@
+[project]
+name = "silvercurrent"
+version = "0.1.0"
+description = "Silvercurrent backend — FastAPI cockpit for evaluating small-business acquisitions."
+readme = "README.md"
+authors = [
+    { name = "AlexCs3008", email = "alejandroringoar@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.18.4",
+    "anthropic>=0.98.1",
+    "chromadb>=1.5.8",
+    "fastapi>=0.136.1",
+    "httpx>=0.28.1",
+    "psycopg[binary]>=3.3.4",
+    "pydantic-settings>=2.14.0",
+    "sqlalchemy>=2.0.49",
+    "uvicorn[standard]>=0.46.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM"]
+ignore = []
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+plugins = []
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.20.2",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "pytest-httpx>=0.36.2",
+    "ruff>=0.15.12",
+]
