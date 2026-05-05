@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { apiPatch, apiPost } from "@/lib/api";
+import { apiPatch, apiPost, apiPostMultipart } from "@/lib/api";
 import {
   LISTING_STATUSES,
   type ExtractionResult,
@@ -163,9 +163,10 @@ export function ListingForm({ initial, enableExtraction }: ListingFormProps) {
   const [error, setError] = useState<string | null>(null);
 
   // Extract panel state — only used when enableExtraction is true.
-  const [extractMode, setExtractMode] = useState<"text" | "url">("text");
+  const [extractMode, setExtractMode] = useState<"text" | "url" | "pdf">("text");
   const [extractText, setExtractText] = useState("");
   const [extractUrl, setExtractUrl] = useState("");
+  const [extractFile, setExtractFile] = useState<File | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
   const [lastUsage, setLastUsage] = useState<ExtractionUsage | null>(null);
@@ -183,18 +184,37 @@ export function ListingForm({ initial, enableExtraction }: ListingFormProps) {
       setExtractError("Enter a URL first.");
       return;
     }
+    if (extractMode === "pdf" && !extractFile) {
+      setExtractError("Choose a PDF first.");
+      return;
+    }
 
     setExtracting(true);
     try {
-      const body =
-        extractMode === "text"
-          ? { source_text: extractText }
-          : { source_url: extractUrl };
-      const result = await apiPost<ExtractionResult>(
-        "/api/listings/extract",
-        body,
-      );
-      setState((prev) => applyExtraction(prev, result));
+      let result: ExtractionResult;
+      let sourceLabel: string | null = null;
+      if (extractMode === "pdf") {
+        const fd = new FormData();
+        fd.append("file", extractFile as File);
+        result = await apiPostMultipart<ExtractionResult>(
+          "/api/listings/extract-pdf",
+          fd,
+        );
+        sourceLabel = "pdf";
+      } else {
+        const body =
+          extractMode === "text"
+            ? { source_text: extractText }
+            : { source_url: extractUrl };
+        result = await apiPost<ExtractionResult>(
+          "/api/listings/extract",
+          body,
+        );
+      }
+      setState((prev) => {
+        const next = applyExtraction(prev, result);
+        return sourceLabel ? { ...next, source: sourceLabel } : next;
+      });
       setLastUsage(result.usage);
     } catch (err) {
       setExtractError(
@@ -273,9 +293,20 @@ export function ListingForm({ initial, enableExtraction }: ListingFormProps) {
               >
                 Paste URL
               </button>
+              <button
+                type="button"
+                onClick={() => setExtractMode("pdf")}
+                className={`rounded-full px-3 py-1 uppercase tracking-wide transition ${
+                  extractMode === "pdf"
+                    ? "bg-foreground text-background"
+                    : "bg-muted text-muted-foreground hover:bg-muted/70"
+                }`}
+              >
+                Upload PDF
+              </button>
             </div>
 
-            {extractMode === "text" ? (
+            {extractMode === "text" && (
               <Field
                 label="Listing text"
                 htmlFor="extract_text"
@@ -289,7 +320,8 @@ export function ListingForm({ initial, enableExtraction }: ListingFormProps) {
                   placeholder="Paste the listing description here…"
                 />
               </Field>
-            ) : (
+            )}
+            {extractMode === "url" && (
               <Field
                 label="Listing URL"
                 htmlFor="extract_url"
@@ -302,6 +334,32 @@ export function ListingForm({ initial, enableExtraction }: ListingFormProps) {
                   onChange={(e) => setExtractUrl(e.target.value)}
                   placeholder="https://…"
                 />
+              </Field>
+            )}
+            {extractMode === "pdf" && (
+              <Field
+                label="PDF file"
+                htmlFor="extract_pdf"
+                hint="Broker teaser or CIM. Scanned/image-only PDFs aren't supported — paste the text instead."
+              >
+                <Input
+                  id="extract_pdf"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(e) =>
+                    setExtractFile(e.target.files?.[0] ?? null)
+                  }
+                  className="cursor-pointer file:mr-3 file:rounded-md file:border file:border-border file:bg-muted file:px-3 file:py-1 file:text-xs file:font-medium hover:file:bg-muted/70"
+                />
+                {extractFile && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {extractFile.name} ·{" "}
+                    {(extractFile.size / 1024).toLocaleString(undefined, {
+                      maximumFractionDigits: 1,
+                    })}{" "}
+                    KB
+                  </p>
+                )}
               </Field>
             )}
 

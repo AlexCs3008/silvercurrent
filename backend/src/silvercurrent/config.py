@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./silvercurrent.db"
     chroma_persist_dir: str = "./.chroma"
     extraction_model: str = "claude-sonnet-4-6"
+    pdf_max_bytes: int = 20_000_000
 
     model_config = SettingsConfigDict(env_file=_ENV_FILES, extra="ignore")
 

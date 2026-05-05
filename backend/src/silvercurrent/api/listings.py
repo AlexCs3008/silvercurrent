@@ -6,11 +6,12 @@ from typing import Annotated
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from silvercurrent.config import get_settings
 from silvercurrent.db.models import Listing
 from silvercurrent.db.session import get_session
 from silvercurrent.ingestion.listings import (
@@ -19,6 +20,7 @@ from silvercurrent.ingestion.listings import (
     extract_listing,
     fetch_url,
 )
+from silvercurrent.ingestion.pdfs import PDFParseError, extract_text_from_pdf
 from silvercurrent.schemas.listings import ListingCreate, ListingRead, ListingStatus, ListingUpdate
 
 router = APIRouter(prefix="/api/listings", tags=["listings"])
@@ -66,6 +68,39 @@ async def extract_from_source(payload: ListingExtractionRequest) -> ExtractionRe
 
     try:
         return await extract_listing(source_text=text, source_url=url)
+    except ExtractionError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@router.post("/extract-pdf", response_model=ExtractionResult)
+async def extract_from_pdf(file: Annotated[UploadFile, File()]) -> ExtractionResult:
+    """Extract listing fields from an uploaded PDF (broker teaser, CIM excerpt).
+
+    Parses the PDF server-side via pymupdf, then runs the same `extract_listing()`
+    pipeline as the URL/text endpoint. Does not save. Does not store the binary —
+    only the extracted text travels onward as `raw_text`.
+    """
+    settings = get_settings()
+    content = await file.read()
+
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(content) > settings.pdf_max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"PDF is {len(content):,} bytes; the cap is {settings.pdf_max_bytes:,}. "
+                "Trim the document or paste the relevant section as text instead."
+            ),
+        )
+
+    try:
+        text = extract_text_from_pdf(content)
+    except PDFParseError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    try:
+        return await extract_listing(source_text=text, source_url=None)
     except ExtractionError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 

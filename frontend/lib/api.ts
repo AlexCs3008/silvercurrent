@@ -78,3 +78,30 @@ export function apiPatch<T>(path: string, body: unknown): Promise<T> {
 export function apiDelete(path: string): Promise<void> {
   return request<void>("DELETE", path);
 }
+
+/** POST a `multipart/form-data` body (file upload). Browser sets the boundary. */
+export async function apiPostMultipart<T>(
+  path: string,
+  formData: FormData,
+): Promise<T> {
+  const url = `${API_BASE_URL}${path}`;
+  const res = await fetch(url, {
+    method: "POST",
+    body: formData,
+    cache: "no-store",
+    // Do NOT set Content-Type — the browser must set it with the boundary.
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    throw new ApiError(
+      res.status,
+      url,
+      `POST ${url} failed: ${res.status} ${res.statusText}${
+        errBody ? ` — ${errBody}` : ""
+      }`,
+    );
+  }
+
+  return (await res.json()) as T;
+}
