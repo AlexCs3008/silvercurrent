@@ -234,3 +234,111 @@
 ### Live smoke
 
 - [x] Browser smoke (Mr. Alonso): pasted real BizBuySell listing via copy/paste fallback (URL fetch 403'd as expected per CLAUDE.md hard rule #2). Ran analysis, Deal Sheet rendered cleanly. Confirmed working.
+
+## Phase A — Fit-ranking + criteria parser
+
+*Completed: 2026-05-06 · Session note: `docs/sessions/2026-05-06-phase-a-fit-ranking.md`*
+
+**Outcome**: deterministic fit-band on every Listing. New `silvercurrent.criteria` package parses `docs/criteria.md` heuristically (ADR 0008) and scores listings into one of `strong | partial | weak | mismatch | unknown`. Fit fields surfaced in `ListingRead` (computed at read-time, not persisted) and rendered as a `FitBadge` in inventory cards. New `score_against_criteria` Analyst tool replaces LLM-reasoning over criteria text in the Deal Sheet's "Hard knockouts" and "Numeric fit" sections — the tool's output is quoted verbatim. Inventory page gains Best-fit / Asking-asc / Asking-desc sort options. 113 backend tests pass; ruff + mypy --strict + tsc + eslint clean.
+
+### [analyst] [backend] [frontend]
+
+- [x] `criteria/parser.py` — heuristic regex parser, returns `ParsedCriteria` dataclass; tolerates trailing parentheticals and unrecognized lines
+- [x] `criteria/scorer.py` — `score_listing(listing, criteria) -> FitResult`; deterministic banding rule per ADR 0008
+- [x] `agents/tools/criteria_score.py` — `score_against_criteria` Envelope tool
+- [x] `agents/analyst.py` — tool registered in `ANALYST_TOOL_SCHEMAS` + `_execute_tool`
+- [x] `prompts/analyst.md` — Hard knockouts + Numeric fit sections quote tool output verbatim
+- [x] `prompts/analyst-chat.md` — chat tool addendum for "does this fit my criteria" questions
+- [x] `schemas/listings.py` + `api/listings.py` — `fit_band` and `fit_summary` computed per-read
+- [x] `frontend/lib/listings.ts` — FitBand types, FIT_BAND_COLOR, sortListings helper
+- [x] `frontend/components/fit-badge.tsx` + listing-card integration
+- [x] `frontend/app/listings/page.tsx` — sort dropdown (Newest / Best fit / Asking asc/desc)
+- [x] ADR `0008-criteria-parsing-conventions.md`
+- [x] Tests: `test_criteria_parser.py`, `test_criteria_scorer.py`, fit-fields assertions in `test_listings.py`, score_against_criteria wiring in `test_analyst_agent.py`
+
+## Phase B — Decision journal
+
+*Completed: 2026-05-06 · Session note: `docs/sessions/2026-05-06-phase-b-decision-journal.md`*
+
+**Outcome**: append-only `DecisionJournalEntry` model + migration; `POST/GET /api/listings/{id}/decisions`; `ListingRead.latest_decision` surfaces newest entry per listing; PATCH-status returns `ListingUpdateResponse` with `requires_decision` flag for transitions to `passed | tracking | loi`. Frontend modal in `listing-actions.tsx` prompts for a one-sentence reason on triggering transitions; cancel still persists the status change (best-effort capture, not a gate). Listing card shows truncated latest reason; detail page renders a "Decision history" card with all entries newest-first. 115 backend tests pass; ruff/mypy/tsc/eslint clean.
+
+### [backend] [frontend]
+
+- [x] `db/models.py` — `DecisionJournalEntry` model
+- [x] Alembic migration `255f02549581_phase_b_decision_journal.py`
+- [x] `schemas/listings.py` — `DecisionJournalRead`, `DecisionJournalCreate`, `ListingUpdateResponse`, `ListingRead.latest_decision`
+- [x] `api/decisions.py` — POST + GET routes (404 / 422 / 201 covered)
+- [x] `api/listings.py` — `_latest_decision()`, awaitable `_to_listing_read()`, PATCH returns `ListingUpdateResponse` with `requires_decision`
+- [x] `main.py` — registered `decisions_router`
+- [x] `frontend/lib/decisions.ts` — types + `postDecision()` / `fetchDecisions()`
+- [x] `frontend/lib/listings.ts` — `latest_decision` and `ListingUpdateResponse` types
+- [x] `frontend/components/listing-actions.tsx` — `DecisionReasonModal` triggered by `requires_decision`; Skip persists status without journal entry
+- [x] `frontend/components/listing-card.tsx` — truncated latest decision shown under financials
+- [x] `frontend/app/listings/[id]/page.tsx` — Decision history card
+- [x] Tests: `test_decisions.py` (6 tests) and PATCH-status decision-requirement tests in `test_listings.py`
+
+## Phase C — Document attachments
+
+*Completed: 2026-05-06 · Session note: `docs/sessions/2026-05-06-phase-c-documents.md` · ADR 0009*
+
+**Outcome**: CIMs / P&Ls / tax returns can be uploaded against a listing, persisted under `data/listings/{id}/`, extracted, chunked, and indexed in SQLite FTS5. New `search_listing_documents` Analyst tool returns ranked chunks wrapped in `<uploaded_document>` per ADR 0002. Deal Sheet (batch) mode explicitly skips this tool; chat mode uses it for document-aware diligence questions. Frontend gains a Documents card on the listing detail page with upload + list + delete + raw-download. 125 backend tests pass; ruff/mypy/tsc/eslint clean.
+
+### [ingestion] [backend] [analyst] [frontend]
+
+- [x] `db/models.py` — `ListingDocument` model
+- [x] Migration `c78366360fdf_phase_c_documents_and_fts5.py` — table + index + FTS5 virtual table via `op.execute()`
+- [x] `documents/__init__.py`, `storage.py`, `extract.py`, `chunk.py`, `index.py`
+- [x] `api/documents.py` — POST upload, GET list, DELETE (DB + FTS + disk), GET raw stream (PDF inline / others attachment)
+- [x] `agents/tools/listing_documents.py` — `search_listing_documents` with `<uploaded_document>` wrapping per ADR 0002, dedup against near-duplicate chunks
+- [x] `agents/analyst.py` — registered tool with schema + handler
+- [x] `prompts/analyst.md` — explicit "do not call in batch mode" guidance
+- [x] `prompts/analyst-chat.md` — directs chat-mode use, frames returned content as DATA
+- [x] `main.py` — registered `documents_router`
+- [x] Frontend: `lib/documents.ts`, `components/document-upload.tsx`, `components/document-list.tsx`, Documents card in `app/listings/[id]/page.tsx`
+- [x] `tests/conftest.py` + `tests/test_analyst_agent.py` — created FTS5 virtual table alongside `metadata.create_all`
+- [x] `tests/test_documents_chunk.py`, `tests/test_documents_search.py`, `tests/test_documents_api.py`
+- [x] ADR `0009-document-attachments-and-fts5.md`
+
+## Phase D — Financing scenario tool
+
+*Completed: 2026-05-06 · Session note: bundled into the Phase A–F summary.*
+
+**Outcome**: shared amortization helper extracted to `agents/tools/_amortization.py`; new `model_capital_stack` Analyst chat-mode tool exposes parameterized capital-stack scenarios (DSCR, cash-on-cash, breakeven SDE drop). Existing `compute_deal_metrics` SBA-default scenario unchanged. 132 backend tests pass.
+
+### [analyst]
+
+- [x] `agents/tools/_amortization.py` — shared `annual_debt_service` helper
+- [x] `agents/tools/deal_metrics.py` — imports the shared helper; `_annual_debt_service` retained as backwards-compat alias
+- [x] `agents/tools/capital_stack.py` — `model_capital_stack` Envelope tool
+- [x] `agents/analyst.py` — registered tool schema + handler
+- [x] `prompts/analyst-chat.md` — describes inputs as buyer-supplied; "don't invent rates"
+- [x] Tests: `test_capital_stack.py` covering 80/10/10, 100% equity, mismatched percentages, sde=0, listing resolution, missing-asking-price failure
+
+## Phase E — Comparison view
+
+*Completed: 2026-05-06 · Bundled session note in the Phase A–F summary.*
+
+**Outcome**: pin 2–3 listings from the inventory; `/listings/compare?ids=...` renders their latest Deal Sheets stacked side-by-side. Pin state persists in `localStorage` under `silvercurrent.pinned_listing_ids` with a cap of 3. Pure UI; no new backend.
+
+### [frontend]
+
+- [x] `lib/deal-sheet.ts` — extracted `parseDealSheetSections()` + `renderBoldOnly()` from `deal-sheet-view.tsx`
+- [x] `components/compare-pin.tsx` — `<ComparePin>` toggle (compact + full variants) using `useSyncExternalStore`; `<CompareLauncher>` button that appears in inventory toolbar when ≥2 are pinned
+- [x] `components/listing-card.tsx` — compact pin in the card header
+- [x] `app/listings/[id]/page.tsx` — full pin button next to ListingActions
+- [x] `app/listings/page.tsx` — CompareLauncher in the toolbar
+- [x] `app/listings/compare/page.tsx` — server component fetches each pinned listing + its latest Deal Sheet, renders three columns, empty state per listing if no Deal Sheet
+
+## Phase F — Calibration view
+
+*Completed: 2026-05-06 · Bundled session note in the Phase A–F summary.*
+
+**Outcome**: `GET /api/calibration` returns the inventory rollup (status mix, fit-band mix, source mix, broker top, SDE/asking histograms, time-to-decision percentiles, recent decision reasons). Frontend renders it at `/listings/calibration` with a "needs ≥20 reviewed listings" advisory state. 136 backend tests pass; frontend gates clean.
+
+### [backend] [frontend]
+
+- [x] `api/calibration.py` — single-roundtrip rollup with histogram bucketing, percentile floor (≥5 samples), 20-most-recent decision reasons
+- [x] `main.py` — registered `calibration_router`
+- [x] `tests/test_calibration.py` — empty DB, status/source aggregation, decision-reason surfacing, percentile null-under-threshold
+- [x] `app/listings/calibration/page.tsx` — count tables, histogram cards, time-to-decision dl, recent reasons
+- [x] Listings toolbar link to Calibration

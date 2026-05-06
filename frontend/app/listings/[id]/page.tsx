@@ -4,11 +4,16 @@ import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ChatPanel } from "@/components/chat-panel";
+import { ComparePin } from "@/components/compare-pin";
+import { DocumentList } from "@/components/document-list";
+import { DocumentUpload } from "@/components/document-upload";
 import { ListingActions } from "@/components/listing-actions";
 import { RunAnalysis } from "@/components/run-analysis";
 import { type DealSheet } from "@/lib/analyze";
 import { ApiError, apiGet } from "@/lib/api";
 import { type ChatTurn } from "@/lib/chat";
+import { type DecisionJournalEntry } from "@/lib/decisions";
+import { type ListingDocument } from "@/lib/documents";
 import { formatDate, formatMoney, type Listing } from "@/lib/listings";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +53,22 @@ export default async function ListingDetailPage({ params }: PageProps) {
           : "Could not load chat history.";
   }
 
+  let decisions: DecisionJournalEntry[] = [];
+  try {
+    decisions = await apiGet<DecisionJournalEntry[]>(
+      `/api/listings/${id}/decisions`,
+    );
+  } catch {
+    decisions = [];
+  }
+
+  let documents: ListingDocument[] = [];
+  try {
+    documents = await apiGet<ListingDocument[]>(`/api/listings/${id}/documents`);
+  } catch {
+    documents = [];
+  }
+
   // Fetch persisted Deal Sheets for this listing. Same pattern: don't block
   // the page if the call fails — the Run Analysis section can still produce
   // new ones.
@@ -84,7 +105,10 @@ export default async function ListingDetailPage({ params }: PageProps) {
         </p>
       </div>
 
-      <ListingActions listing={listing} />
+      <div className="flex flex-wrap items-center gap-3">
+        <ListingActions listing={listing} />
+        <ComparePin listingId={listing.id} variant="full" />
+      </div>
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
@@ -187,6 +211,44 @@ export default async function ListingDetailPage({ params }: PageProps) {
             </Badge>
           ))}
         </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Documents</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <DocumentUpload listingId={id} />
+          <DocumentList listingId={id} documents={documents} />
+        </CardContent>
+      </Card>
+
+      {decisions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Decision history</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="flex flex-col gap-2 text-sm">
+              {decisions.map((entry) => (
+                <li
+                  key={entry.id}
+                  className="border-l-2 border-border pl-3 leading-relaxed"
+                >
+                  <p>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {entry.previous_status ?? "—"} → {entry.new_status}
+                    </span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {formatDate(entry.created_at)}
+                    </span>
+                  </p>
+                  <p className="mt-1">{entry.reason}</p>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       )}
 
       <p className="text-xs text-muted-foreground">

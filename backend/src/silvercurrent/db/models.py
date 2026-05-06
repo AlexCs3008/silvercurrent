@@ -77,6 +77,52 @@ class ChatTurn(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
 
+class DecisionJournalEntry(Base):
+    """Append-only record of why the buyer changed a listing's status.
+
+    Phase B: when status flips to `passed`, `tracking`, or `loi`, the UI prompts
+    for a one-sentence reason and POSTs it here. The journal is user-owned —
+    agents don't read or write it. Append-only so the user can compare
+    rationale over time (the reason for `passed` may differ from the later
+    reason for `tracking`).
+    """
+
+    __tablename__ = "decision_journal_entry"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    listing_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("listing.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    previous_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    new_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+
+class ListingDocument(Base):
+    """A file (CIM, P&L, tax return, etc.) uploaded against a specific listing.
+
+    Phase C: file bytes live on the filesystem under `data/listings/{id}/`;
+    this row carries metadata + the full extracted text snapshot. Chunked
+    text lives in the `listing_document_chunk_fts` FTS5 virtual table for
+    keyword-shaped diligence queries. ADR 0009.
+    """
+
+    __tablename__ = "listing_document"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    listing_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("listing.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+
 class DealSheet(Base):
     """A single Run Analysis output for a listing (Phase 3 slice 3).
 

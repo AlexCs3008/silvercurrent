@@ -5,6 +5,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { type DealSheet } from "@/lib/analyze";
+import {
+  parseDealSheetSections,
+  renderBoldOnly,
+  type DealSheetSection,
+} from "@/lib/deal-sheet";
 
 type DealSheetViewProps = {
   sheet: DealSheet;
@@ -24,7 +29,7 @@ type DealSheetViewProps = {
  */
 export function DealSheetView({ sheet, defaultOpen = false }: DealSheetViewProps) {
   const [open, setOpen] = useState(defaultOpen);
-  const sections = parseSections(sheet.markdown);
+  const sections = parseDealSheetSections(sheet.markdown);
   const created = new Date(sheet.created_at);
 
   return (
@@ -79,58 +84,6 @@ function Section({ title, body }: { title: string; body: string }) {
   );
 }
 
-type ParsedSection = {
-  title: string;
-  body: string;
-};
-
-/**
- * Split the markdown on `### ` headers. Anything before the first header
- * (rare — the Analyst's prompt locks the structure) is dropped.
- */
-function parseSections(markdown: string): ParsedSection[] {
-  const sections: ParsedSection[] = [];
-  const lines = markdown.split(/\r?\n/);
-  let currentTitle: string | null = null;
-  let currentBody: string[] = [];
-
-  function flush() {
-    if (currentTitle !== null) {
-      sections.push({
-        title: currentTitle,
-        body: currentBody.join("\n"),
-      });
-    }
-  }
-
-  for (const line of lines) {
-    const m = /^###\s+(.+)$/.exec(line);
-    if (m) {
-      flush();
-      currentTitle = m[1].trim();
-      currentBody = [];
-    } else if (currentTitle !== null) {
-      currentBody.push(line);
-    }
-  }
-  flush();
-  return sections;
-}
-
-/**
- * Render `**bold**` → `<strong>...</strong>`. Escapes everything else so we
- * don't open an XSS hole — `dangerouslySetInnerHTML` is safe here because
- * the only HTML produced is `<strong>` from a regex applied to escaped text.
- */
-function renderBoldOnly(text: string): string {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-  return escaped.replace(
-    /\*\*([^*]+?)\*\*/g,
-    '<strong class="font-semibold">$1</strong>',
-  );
-}
+// Re-export for callers that still imported the inline name (none today, but
+// safe). Helpers themselves live in `@/lib/deal-sheet`.
+export type { DealSheetSection };

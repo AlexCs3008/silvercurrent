@@ -32,12 +32,27 @@ from silvercurrent.main import app
 # --- Fixtures -----------------------------------------------------------------
 
 
+_FTS5_DDL = """
+CREATE VIRTUAL TABLE IF NOT EXISTS listing_document_chunk_fts USING fts5(
+    document_id UNINDEXED,
+    listing_id UNINDEXED,
+    chunk_index UNINDEXED,
+    page_hint UNINDEXED,
+    content,
+    tokenize='porter unicode61'
+)
+"""
+
+
 @pytest_asyncio.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
     """Per-test in-memory sqlite session."""
+    from sqlalchemy import text
+
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text(_FTS5_DDL))
     factory = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
     async with factory() as s:
         yield s
@@ -237,6 +252,32 @@ async def test_analyst_surfaces_tool_failure(db_session: AsyncSession) -> None:
     assert tool_result_block["is_error"] is True
     payload = json.loads(tool_result_block["content"])
     assert "not found" in payload["error"]
+
+
+@pytest.mark.asyncio
+async def test_analyst_invokes_score_against_criteria(db_session: AsyncSession) -> None:
+    """The new `score_against_criteria` tool is wired into the loop and its output flows back."""
+    listing = _seed_listing(db_session)
+    await db_session.commit()
+
+    fake_client = _client_with_responses(
+        _tool_use_response("score_against_criteria", {}, block_id="t1"),
+        _text_response("### Hard knockouts\n- Declining revenue 3 years running. — PASS"),
+    )
+
+    agent = AnalystAgent(client=fake_client, session=db_session, model="test-model")
+    result = await agent.analyze(listing_id=listing.id)
+
+    # Second messages.create call's payload includes the tool result for score_against_criteria.
+    second_call = fake_client.messages.create.call_args_list[1]
+    sent_messages = second_call.kwargs["messages"]
+    tool_result_block = sent_messages[-1]["content"][0]
+    assert tool_result_block.get("is_error") is not True
+    payload = json.loads(tool_result_block["content"])
+    assert "fit_result" in payload
+    fit = payload["fit_result"]
+    assert fit["band"] in {"strong", "partial", "weak", "mismatch", "unknown"}
+    assert "PASS" in result.deal_sheet
 
 
 @pytest.mark.asyncio

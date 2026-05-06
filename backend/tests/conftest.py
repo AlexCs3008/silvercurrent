@@ -11,11 +11,26 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from silvercurrent.db.models import Base
 from silvercurrent.db.session import get_session
 from silvercurrent.main import app
+
+# FTS5 virtual table for `listing_document_chunk_fts` — Alembic creates this in
+# the real DB; tests need to create it alongside the ORM tables since
+# `metadata.create_all` doesn't model virtual tables.
+_FTS5_DDL = """
+CREATE VIRTUAL TABLE IF NOT EXISTS listing_document_chunk_fts USING fts5(
+    document_id UNINDEXED,
+    listing_id UNINDEXED,
+    chunk_index UNINDEXED,
+    page_hint UNINDEXED,
+    content,
+    tokenize='porter unicode61'
+)
+"""
 
 
 @pytest_asyncio.fixture
@@ -24,6 +39,7 @@ async def session() -> AsyncIterator[AsyncSession]:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text(_FTS5_DDL))
 
     factory = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
     async with factory() as s:

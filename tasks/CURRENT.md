@@ -1,7 +1,32 @@
 # Tasks — currently in flight
 
-*Active phase: **none — Phase 3 complete, Phase 4 deferred***
-*Last updated: 2026-05-05 — Phase 4 (email ingestion) deferred until manual sourcing becomes the bottleneck. ADR 0007 status: deferred.*
+*Active phase: **none — Screen / Diligence / Judgment expansion (Phases A–F) shipped 2026-05-06.***
+*Last updated: 2026-05-06 — back to manual-sourcing mode; live-smoke against real listings is the next call to action.*
+
+---
+
+*Nothing in flight.*
+
+The cockpit now supports per-listing fit-band scoring (Phase A), append-only decision journaling on status transitions (Phase B), document attachments with FTS5 keyword search (Phase C), parameterized capital-stack scenarios (Phase D), side-by-side Deal Sheet comparison (Phase E), and an inventory calibration rollup (Phase F).
+
+**Three reasonable next directions when there's appetite for code work again:**
+
+1. **Live smoke against real listings** — upload a real CIM, ask document-aware diligence questions, walk a listing through the status pipeline and confirm the journal modal fires correctly. Likely surfaces prompt tuning needed on `analyst-chat.md` for the new `search_listing_documents` and `model_capital_stack` tools.
+
+2. **Phase 4 — Email ingestion daemon (still deferred).** ADR `0007-inbound-email-provider.md` is parked at status `deferred`. Reopen when manual sourcing is the bottleneck.
+
+3. **Polish backlog** — see `tasks/BACKLOG.md`.
+
+---
+
+## Backlog (parked, not in flight)
+
+- **Cosmetic cleanup of `sba_sop_50_10_8.md`** — `Lender�s` U+FFFD remap.
+- **react-markdown for Deal Sheet rendering** if the custom renderer feels rough.
+- **Optimizer agent** — v2 work, post-acquisition.
+- **Frontend test harness** — Vitest + RTL.
+- **shadcn `Dialog` primitive** — replace the hand-rolled modal in `listing-actions.tsx` once a second modal needs the same shell.
+- **Filesystem cleanup on listing-cascade-delete** — currently the API delete handler unlinks files; cascade deletes from a listing leave the directory. One-off cleanup script if orphans accumulate.
 
 ---
 

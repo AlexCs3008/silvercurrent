@@ -7,6 +7,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ComparePin } from "@/components/compare-pin";
+import { FitBadge } from "@/components/fit-badge";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDate, formatMoney, type Listing } from "@/lib/listings";
 
@@ -35,7 +37,13 @@ export function ListingCard({ listing }: ListingCardProps) {
                 {listing.location ? ` · ${listing.location}` : ""}
               </CardDescription>
             </div>
-            <StatusBadge status={listing.status} />
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                <ComparePin listingId={listing.id} variant="compact" />
+                <StatusBadge status={listing.status} />
+              </div>
+              <FitBadge band={listing.fit_band} summary={listing.fit_summary} />
+            </div>
           </div>
         </CardHeader>
         <CardContent className="text-sm">
@@ -51,6 +59,14 @@ export function ListingCard({ listing }: ListingCardProps) {
               {formatMoney(listing.revenue)}
             </dd>
           </dl>
+          {listing.latest_decision && (
+            <p
+              className="mt-3 truncate text-[11px] italic text-muted-foreground"
+              title={listing.latest_decision.reason}
+            >
+              {listing.latest_decision.new_status}: {listing.latest_decision.reason}
+            </p>
+          )}
           <p className="mt-3 text-[11px] text-muted-foreground">
             Added {formatDate(listing.created_at)} · {listing.source}
           </p>

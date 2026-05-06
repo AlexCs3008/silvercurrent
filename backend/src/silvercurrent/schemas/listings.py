@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 ListingStatus = Literal["new", "reviewing", "passed", "tracking", "loi", "closed"]
+FitBand = Literal["strong", "partial", "weak", "mismatch", "unknown"]
 
 
 class ListingCreate(BaseModel):
@@ -101,3 +102,53 @@ class ListingRead(BaseModel):
     status: ListingStatus
     notes: str | None
     tags: list[str]
+
+    # Computed at read-time from `docs/criteria.md` via `criteria.scorer`. Not
+    # persisted — recomputed on every read so criteria edits propagate without
+    # a backfill. ADR 0008.
+    fit_band: FitBand | None = None
+    fit_summary: str | None = None
+
+    # Latest decision-journal entry for this listing, or null if no journal
+    # entries exist. Computed at read-time alongside fit fields.
+    latest_decision: DecisionJournalRead | None = None
+
+
+class DecisionJournalRead(BaseModel):
+    """Response shape for a single decision journal entry."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    listing_id: UUID
+    previous_status: str | None
+    new_status: str
+    reason: str
+    created_at: datetime
+
+
+class DecisionJournalCreate(BaseModel):
+    """Body for `POST /api/listings/{id}/decisions`."""
+
+    previous_status: str | None = Field(default=None, max_length=32)
+    new_status: str = Field(..., min_length=1, max_length=32)
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+class ListingUpdateResponse(BaseModel):
+    """Wrapper around `ListingRead` that adds `requires_decision`.
+
+    Set when a status change moved the listing into a decision-worthy bucket
+    (`passed`, `tracking`, `loi`). The frontend uses this to open the reason
+    modal. The state change still persists either way — the journal is
+    best-effort capture, not a gate.
+    """
+
+    listing: ListingRead
+    requires_decision: bool = False
+    decision_previous_status: str | None = None
+    decision_new_status: str | None = None
+
+
+# Re-resolve forward reference now that DecisionJournalRead is defined.
+ListingRead.model_rebuild()

@@ -17,6 +17,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from silvercurrent.agents.tools._amortization import annual_debt_service
 from silvercurrent.agents.tools._envelope import Envelope, fail, ok
 from silvercurrent.db.models import Listing
 
@@ -29,19 +30,9 @@ SBA_TERM_YEARS = 10
 SBA_ANNUAL_RATE = 0.105  # 10.5% — illustrative; replace with a settings value when rate sensitivity matters.
 
 
-def _annual_debt_service(loan_amount: float, annual_rate: float, term_years: int) -> float:
-    """Standard amortization: monthly payment × 12.
-
-    PMT = P · (r/12) / (1 − (1 + r/12)^(−12·t))
-    """
-    if loan_amount <= 0:
-        return 0.0
-    monthly_rate = annual_rate / 12
-    n = term_years * 12
-    if monthly_rate == 0:
-        return (loan_amount / n) * 12
-    monthly_payment = loan_amount * monthly_rate / (1 - (1 + monthly_rate) ** (-n))
-    return monthly_payment * 12
+# Backwards-compat alias — Phase 3 tests import this name. The shared helper
+# in `_amortization.annual_debt_service` is the canonical implementation.
+_annual_debt_service = annual_debt_service
 
 
 async def compute_deal_metrics(
@@ -85,7 +76,7 @@ async def compute_deal_metrics(
     if asking is not None and asking > 0:
         down = asking * SBA_DOWN_PAYMENT_FRACTION
         loan = asking - down
-        annual_ds = _annual_debt_service(loan, SBA_ANNUAL_RATE, SBA_TERM_YEARS)
+        annual_ds = annual_debt_service(loan, SBA_ANNUAL_RATE, SBA_TERM_YEARS)
         scenario: dict[str, Any] = {
             "assumptions": {
                 "down_payment_fraction": SBA_DOWN_PAYMENT_FRACTION,

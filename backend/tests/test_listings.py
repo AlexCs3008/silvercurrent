@@ -111,10 +111,44 @@ async def test_patch_partial_update(client: AsyncClient, listing_payload: dict[s
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "reviewing"
-    assert body["notes"] == "Looking promising."
-    assert body["business_name"] == "Acme HVAC"
-    assert body["source"] == "manual"
+    listing = body["listing"]
+    assert listing["status"] == "reviewing"
+    assert listing["notes"] == "Looking promising."
+    assert listing["business_name"] == "Acme HVAC"
+    assert listing["source"] == "manual"
+    # `reviewing` is not a decision-worthy status.
+    assert body["requires_decision"] is False
+
+
+@pytest.mark.asyncio
+async def test_patch_status_to_passed_requires_decision(client: AsyncClient, listing_payload: dict[str, Any]) -> None:
+    """Status changes to passed/tracking/loi flag `requires_decision: true`."""
+    created = (await client.post("/api/listings", json=listing_payload)).json()
+    response = await client.patch(
+        f"/api/listings/{created['id']}",
+        json={"status": "passed"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["requires_decision"] is True
+    assert body["decision_previous_status"] == "new"
+    assert body["decision_new_status"] == "passed"
+    # State change still persists.
+    assert body["listing"]["status"] == "passed"
+
+
+@pytest.mark.asyncio
+async def test_patch_status_to_reviewing_does_not_require_decision(
+    client: AsyncClient, listing_payload: dict[str, Any]
+) -> None:
+    """`reviewing` is not a decision-worthy bucket."""
+    created = (await client.post("/api/listings", json=listing_payload)).json()
+    response = await client.patch(
+        f"/api/listings/{created['id']}",
+        json={"status": "reviewing"},
+    )
+    assert response.status_code == 200
+    assert response.json()["requires_decision"] is False
 
 
 @pytest.mark.asyncio
@@ -153,3 +187,28 @@ async def test_delete_404(client: AsyncClient) -> None:
     """DELETE against a missing id returns 404."""
     response = await client.delete(f"/api/listings/{uuid4()}")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_listings_includes_fit_fields(client: AsyncClient, full_listing_payload: dict[str, Any]) -> None:
+    """`GET /api/listings` populates `fit_band` and `fit_summary` from `docs/criteria.md`."""
+    await client.post("/api/listings", json=full_listing_payload)
+    response = await client.get("/api/listings")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    row = body[0]
+    assert "fit_band" in row
+    assert row["fit_band"] in {"strong", "partial", "weak", "mismatch", "unknown"}
+    assert isinstance(row["fit_summary"], str) and len(row["fit_summary"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_get_listing_includes_fit_fields(client: AsyncClient, full_listing_payload: dict[str, Any]) -> None:
+    """`GET /api/listings/{id}` populates `fit_band` and `fit_summary`."""
+    created = (await client.post("/api/listings", json=full_listing_payload)).json()
+    response = await client.get(f"/api/listings/{created['id']}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["fit_band"] in {"strong", "partial", "weak", "mismatch", "unknown"}
+    assert isinstance(body["fit_summary"], str)
