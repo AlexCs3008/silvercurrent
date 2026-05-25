@@ -31,8 +31,12 @@ function writePinned(ids: string[]) {
   );
 }
 
-// `useSyncExternalStore` requires a stable snapshot reference. We cache the
-// last known list and only return a new array when the JSON differs.
+// `useSyncExternalStore` requires a stable snapshot reference on every call —
+// returning a fresh array each time triggers React's "should be cached to
+// avoid an infinite loop" warning. We cache the last known list and only
+// return a new array when the JSON differs. EMPTY is a singleton for the
+// SSR / pre-hydration case.
+const EMPTY: readonly string[] = [];
 let cachedSnapshot: string[] = [];
 let cachedJson = "";
 
@@ -46,7 +50,7 @@ function getSnapshot(): string[] {
 }
 
 function getServerSnapshot(): string[] {
-  return [];
+  return EMPTY as string[];
 }
 
 function subscribe(callback: () => void): () => void {

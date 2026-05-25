@@ -2,7 +2,38 @@ import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiGet } from "@/lib/api";
-import { formatMoney } from "@/lib/listings";
+import {
+  FIT_BANDS,
+  LISTING_STATUSES,
+  formatMoney,
+  type FitBand,
+  type ListingStatus,
+} from "@/lib/listings";
+
+const STATUS_BAR_COLOR: Record<ListingStatus, string> = {
+  new: "bg-blue-500/60",
+  reviewing: "bg-amber-500/60",
+  passed: "bg-zinc-500/50",
+  tracking: "bg-purple-500/60",
+  loi: "bg-emerald-500/60",
+  closed: "bg-emerald-700/70",
+};
+
+const FIT_BAR_COLOR: Record<FitBand, string> = {
+  strong: "bg-emerald-500/60",
+  partial: "bg-amber-500/60",
+  weak: "bg-amber-500/35",
+  mismatch: "bg-zinc-500/60",
+  unknown: "bg-zinc-500/30",
+};
+
+function isStatus(value: string): value is ListingStatus {
+  return (LISTING_STATUSES as readonly string[]).includes(value);
+}
+
+function isFit(value: string): value is FitBand {
+  return (FIT_BANDS as readonly string[]).includes(value);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -96,7 +127,15 @@ export default async function CalibrationPage() {
             <CardTitle className="text-base">Status mix</CardTitle>
           </CardHeader>
           <CardContent>
-            <CountTable counts={data.status_mix} />
+            <CountTable
+              counts={data.status_mix}
+              colorFor={(label) =>
+                isStatus(label) ? STATUS_BAR_COLOR[label] : "bg-foreground/30"
+              }
+              hrefFor={(label) =>
+                isStatus(label) ? `/listings?status=${label}` : undefined
+              }
+            />
           </CardContent>
         </Card>
         <Card>
@@ -104,7 +143,12 @@ export default async function CalibrationPage() {
             <CardTitle className="text-base">Fit-band mix</CardTitle>
           </CardHeader>
           <CardContent>
-            <CountTable counts={data.fit_band_mix} />
+            <CountTable
+              counts={data.fit_band_mix}
+              colorFor={(label) =>
+                isFit(label) ? FIT_BAR_COLOR[label] : "bg-foreground/30"
+              }
+            />
           </CardContent>
         </Card>
         <Card>
@@ -209,7 +253,15 @@ export default async function CalibrationPage() {
   );
 }
 
-function CountTable({ counts }: { counts: Record<string, number> }) {
+function CountTable({
+  counts,
+  colorFor,
+  hrefFor,
+}: {
+  counts: Record<string, number>;
+  colorFor?: (label: string) => string;
+  hrefFor?: (label: string) => string | undefined;
+}) {
   const entries = Object.entries(counts);
   if (entries.length === 0) {
     return (
@@ -219,19 +271,37 @@ function CountTable({ counts }: { counts: Record<string, number> }) {
   const max = Math.max(1, ...entries.map(([, v]) => v));
   return (
     <ul className="flex flex-col gap-1 text-sm">
-      {entries.map(([label, count]) => (
-        <li key={label} className="flex items-center gap-2">
-          <span className="w-20 shrink-0 text-xs text-muted-foreground">
-            {label}
-          </span>
-          <span
-            className="h-2 rounded-full bg-foreground/30"
-            style={{ width: `${(count / max) * 100}%` }}
-            aria-hidden="true"
-          />
-          <span className="ml-auto font-mono text-xs">{count}</span>
-        </li>
-      ))}
+      {entries.map(([label, count]) => {
+        const barColor = colorFor?.(label) ?? "bg-foreground/30";
+        const href = hrefFor?.(label);
+        const row = (
+          <>
+            <span className="w-20 shrink-0 text-xs text-muted-foreground">
+              {label}
+            </span>
+            <span
+              className={"h-2 rounded-full " + barColor}
+              style={{ width: `${(count / max) * 100}%` }}
+              aria-hidden="true"
+            />
+            <span className="ml-auto font-mono text-xs">{count}</span>
+          </>
+        );
+        return (
+          <li key={label}>
+            {href ? (
+              <Link
+                href={href}
+                className="flex items-center gap-2 rounded-md px-1 py-0.5 -mx-1 transition-colors hover:bg-muted"
+              >
+                {row}
+              </Link>
+            ) : (
+              <div className="flex items-center gap-2 px-1 py-0.5">{row}</div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

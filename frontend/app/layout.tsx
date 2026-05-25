@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
 
+import { SidebarNav } from "@/components/sidebar-nav";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,12 +18,6 @@ export const metadata: Metadata = {
   title: "Silvercurrent",
   description: "Personal cockpit for evaluating small-business acquisitions.",
 };
-
-const navLinks = [
-  { href: "/", label: "Home" },
-  { href: "/listings", label: "Listings" },
-  { href: "/chat", label: "Chat" },
-] as const;
 
 export default function RootLayout({
   children,
@@ -46,17 +40,7 @@ export default function RootLayout({
                 Acquisition cockpit
               </p>
             </div>
-            <nav className="flex flex-col gap-1">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="rounded-md px-3 py-2 text-sm font-medium hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
+            <SidebarNav />
           </aside>
           <main className="flex-1 px-8 py-8">{children}</main>
         </div>

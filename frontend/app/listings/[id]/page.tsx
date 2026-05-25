@@ -3,12 +3,20 @@ import { notFound } from "next/navigation";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { ChatPanel } from "@/components/chat-panel";
 import { ComparePin } from "@/components/compare-pin";
 import { DocumentList } from "@/components/document-list";
 import { DocumentUpload } from "@/components/document-upload";
+import { FitBadge } from "@/components/fit-badge";
 import { ListingActions } from "@/components/listing-actions";
 import { RunAnalysis } from "@/components/run-analysis";
+import { StatusBadge } from "@/components/status-badge";
 import { type DealSheet } from "@/lib/analyze";
 import { ApiError, apiGet } from "@/lib/api";
 import { type ChatTurn } from "@/lib/chat";
@@ -36,124 +44,215 @@ export default async function ListingDetailPage({ params }: PageProps) {
     throw err;
   }
 
-  // Fetch listing-scoped chat history alongside the listing. Failure here
-  // shouldn't block the page — the chat panel just opens empty.
-  let initialTurns: ChatTurn[] = [];
-  let chatError: string | null = null;
-  try {
-    initialTurns = await apiGet<ChatTurn[]>(
-      `/api/chat?scope=${encodeURIComponent(scope)}`,
-    );
-  } catch (err) {
-    chatError =
-      err instanceof ApiError
-        ? `Backend returned ${err.status}`
-        : err instanceof Error
-          ? err.message
-          : "Could not load chat history.";
-  }
+  // Fetch listing-scoped chat history, decisions, documents, and prior Deal
+  // Sheets in parallel. Failures degrade gracefully — the affected panel just
+  // shows an empty/error state.
+  const [chatResult, decisionsResult, documentsResult, sheetsResult] =
+    await Promise.allSettled([
+      apiGet<ChatTurn[]>(`/api/chat?scope=${encodeURIComponent(scope)}`),
+      apiGet<DecisionJournalEntry[]>(`/api/listings/${id}/decisions`),
+      apiGet<ListingDocument[]>(`/api/listings/${id}/documents`),
+      apiGet<DealSheet[]>(`/api/analyze/${id}`),
+    ]);
 
-  let decisions: DecisionJournalEntry[] = [];
-  try {
-    decisions = await apiGet<DecisionJournalEntry[]>(
-      `/api/listings/${id}/decisions`,
-    );
-  } catch {
-    decisions = [];
-  }
+  const initialTurns: ChatTurn[] =
+    chatResult.status === "fulfilled" ? chatResult.value : [];
+  const chatError: string | null =
+    chatResult.status === "rejected" ? describeError(chatResult.reason) : null;
 
-  let documents: ListingDocument[] = [];
-  try {
-    documents = await apiGet<ListingDocument[]>(`/api/listings/${id}/documents`);
-  } catch {
-    documents = [];
-  }
+  const decisions: DecisionJournalEntry[] =
+    decisionsResult.status === "fulfilled" ? decisionsResult.value : [];
+  const documents: ListingDocument[] =
+    documentsResult.status === "fulfilled" ? documentsResult.value : [];
 
-  // Fetch persisted Deal Sheets for this listing. Same pattern: don't block
-  // the page if the call fails — the Run Analysis section can still produce
-  // new ones.
-  let initialSheets: DealSheet[] = [];
-  let sheetsError: string | null = null;
-  try {
-    initialSheets = await apiGet<DealSheet[]>(`/api/analyze/${id}`);
-  } catch (err) {
-    sheetsError =
-      err instanceof ApiError
-        ? `Backend returned ${err.status}`
-        : err instanceof Error
-          ? err.message
-          : "Could not load prior analyses.";
-  }
+  const initialSheets: DealSheet[] =
+    sheetsResult.status === "fulfilled" ? sheetsResult.value : [];
+  const sheetsError: string | null =
+    sheetsResult.status === "rejected"
+      ? describeError(sheetsResult.reason)
+      : null;
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Link
-          href="/listings"
-          className="text-xs text-muted-foreground hover:text-foreground"
-        >
-          ← Back to listings
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-          {listing.business_name || (
-            <span className="italic text-muted-foreground">unnamed</span>
+      <Header listing={listing} />
+
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="w-full justify-start">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="documents">
+            Documents
+            {documents.length > 0 && (
+              <span className="ml-1.5 rounded-full bg-muted px-1.5 text-[10px] font-mono text-muted-foreground">
+                {documents.length}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="analysis">
+            Analysis
+            {initialSheets.length > 0 && (
+              <span className="ml-1.5 rounded-full bg-muted px-1.5 text-[10px] font-mono text-muted-foreground">
+                {initialSheets.length}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="chat">
+            Chat
+            {initialTurns.length > 0 && (
+              <span className="ml-1.5 rounded-full bg-muted px-1.5 text-[10px] font-mono text-muted-foreground">
+                {Math.floor(initialTurns.length / 2)}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-4">
+          <OverviewTab listing={listing} decisions={decisions} />
+        </TabsContent>
+
+        <TabsContent value="documents" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Documents</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <DocumentUpload listingId={id} />
+              <DocumentList listingId={id} documents={documents} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="analysis" className="mt-4">
+          {sheetsError ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+            >
+              <p className="font-medium">Couldn’t load prior analyses.</p>
+              <p className="mt-1 font-mono text-xs">{sheetsError}</p>
+            </div>
+          ) : (
+            <RunAnalysis listingId={id} initialSheets={initialSheets} />
           )}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {listing.industry ?? "industry —"}
-          {listing.location ? ` · ${listing.location}` : ""}
-        </p>
-      </div>
+        </TabsContent>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <ListingActions listing={listing} />
-        <ComparePin listingId={listing.id} variant="full" />
-      </div>
+        <TabsContent value="chat" className="mt-4">
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              The Router classifies each message and dispatches to the Analyst
+              (this deal) or the Operator (general ETA mechanics).
+            </p>
+            {chatError ? (
+              <div
+                role="alert"
+                className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+              >
+                <p className="font-medium">Couldn’t load chat history.</p>
+                <p className="mt-1 font-mono text-xs">{chatError}</p>
+              </div>
+            ) : (
+              <ChatPanel
+                scope={scope}
+                initialTurns={initialTurns}
+                variant="listing"
+              />
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Financials</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-2 gap-y-2 text-sm">
-              <Row label="Asking price" value={formatMoney(listing.asking_price)} />
-              <Row label="SDE" value={formatMoney(listing.sde)} />
-              <Row label="Cash flow" value={formatMoney(listing.cash_flow)} />
-              <Row label="Revenue" value={formatMoney(listing.revenue)} />
-            </dl>
-          </CardContent>
-        </Card>
+function Header({ listing }: { listing: Listing }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <Link
+        href="/listings"
+        className="self-start text-xs text-muted-foreground hover:text-foreground"
+      >
+        ← Back to listings
+      </Link>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Identity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
-              <Row label="Industry" value={listing.industry ?? "—"} />
-              <Row label="NAICS" value={listing.naics_code ?? "—"} />
-              <Row label="Location" value={listing.location ?? "—"} />
-              <Row label="Source" value={listing.source} />
-              {listing.source_url && (
-                <Row
-                  label="Source URL"
-                  value={
-                    <a
-                      href={listing.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
-                    >
-                      {listing.source_url}
-                    </a>
-                  }
-                />
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {listing.business_name || (
+                <span className="italic text-muted-foreground">unnamed</span>
               )}
-            </dl>
-          </CardContent>
-        </Card>
+            </h1>
+            <StatusBadge status={listing.status} />
+            <FitBadge band={listing.fit_band} summary={listing.fit_summary} />
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {listing.industry ?? "industry —"}
+            {listing.location ? ` · ${listing.location}` : ""}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <ListingActions listing={listing} />
+          <ComparePin listingId={listing.id} variant="full" />
+        </div>
       </div>
+
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-border bg-card/30 px-4 py-3 text-sm md:grid-cols-4">
+        <StatBlock label="Asking" value={formatMoney(listing.asking_price)} />
+        <StatBlock label="SDE" value={formatMoney(listing.sde)} />
+        <StatBlock label="Cash flow" value={formatMoney(listing.cash_flow)} />
+        <StatBlock label="Revenue" value={formatMoney(listing.revenue)} />
+      </dl>
+    </div>
+  );
+}
+
+function StatBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col">
+      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="font-mono text-base">{value}</dd>
+    </div>
+  );
+}
+
+function OverviewTab({
+  listing,
+  decisions,
+}: {
+  listing: Listing;
+  decisions: DecisionJournalEntry[];
+}) {
+  return (
+    <div className="flex flex-col gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Identity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
+            <Row label="Industry" value={listing.industry ?? "—"} />
+            <Row label="NAICS" value={listing.naics_code ?? "—"} />
+            <Row label="Location" value={listing.location ?? "—"} />
+            <Row label="Source" value={listing.source} />
+            {listing.source_url && (
+              <Row
+                label="Source URL"
+                value={
+                  <a
+                    href={listing.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+                  >
+                    {listing.source_url}
+                  </a>
+                }
+              />
+            )}
+          </dl>
+        </CardContent>
+      </Card>
 
       {(listing.narrative || listing.reason_for_selling) && (
         <Card>
@@ -168,7 +267,7 @@ export default async function ListingDetailPage({ params }: PageProps) {
               </p>
             )}
             {listing.narrative && (
-              <p className="whitespace-pre-wrap leading-relaxed">
+              <p className="max-w-prose whitespace-pre-wrap leading-relaxed">
                 {listing.narrative}
               </p>
             )}
@@ -196,7 +295,7 @@ export default async function ListingDetailPage({ params }: PageProps) {
             <CardTitle className="text-base">Notes</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">
+            <p className="max-w-prose whitespace-pre-wrap text-sm leading-relaxed">
               {listing.notes}
             </p>
           </CardContent>
@@ -212,16 +311,6 @@ export default async function ListingDetailPage({ params }: PageProps) {
           ))}
         </div>
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Documents</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <DocumentUpload listingId={id} />
-          <DocumentList listingId={id} documents={documents} />
-        </CardContent>
-      </Card>
 
       {decisions.length > 0 && (
         <Card>
@@ -255,49 +344,14 @@ export default async function ListingDetailPage({ params }: PageProps) {
         Added {formatDate(listing.created_at)} · last updated{" "}
         {formatDate(listing.updated_at)}
       </p>
-
-      <div className="mt-4 flex flex-col gap-3 border-t border-border pt-6">
-        {sheetsError ? (
-          <div
-            role="alert"
-            className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
-          >
-            <p className="font-medium">Couldn’t load prior analyses.</p>
-            <p className="mt-1 font-mono text-xs">{sheetsError}</p>
-          </div>
-        ) : (
-          <RunAnalysis listingId={id} initialSheets={initialSheets} />
-        )}
-      </div>
-
-      <div className="mt-4 flex flex-col gap-3 border-t border-border pt-6">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">
-            Chat about this listing
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            The Router classifies each message and dispatches to the Analyst
-            (this deal) or the Operator (general ETA mechanics).
-          </p>
-        </div>
-        {chatError ? (
-          <div
-            role="alert"
-            className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
-          >
-            <p className="font-medium">Couldn’t load chat history.</p>
-            <p className="mt-1 font-mono text-xs">{chatError}</p>
-          </div>
-        ) : (
-          <ChatPanel
-            scope={scope}
-            initialTurns={initialTurns}
-            variant="listing"
-          />
-        )}
-      </div>
     </div>
   );
+}
+
+function describeError(err: unknown): string {
+  if (err instanceof ApiError) return `Backend returned ${err.status}`;
+  if (err instanceof Error) return err.message;
+  return "Unknown error";
 }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
