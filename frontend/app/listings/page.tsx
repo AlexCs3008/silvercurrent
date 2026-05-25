@@ -207,11 +207,13 @@ export default async function ListingsPage({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <ul className="flex flex-col gap-3">
           {sorted.map((listing) => (
-            <ListingCard key={listing.id} listing={listing} />
+            <li key={listing.id}>
+              <ListingCard listing={listing} />
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );

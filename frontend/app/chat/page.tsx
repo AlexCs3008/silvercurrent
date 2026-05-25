@@ -1,32 +1,63 @@
-import { ChatPanel } from "@/components/chat-panel";
+import { ChatWorkspace } from "@/components/chat-workspace";
 import { ApiError, apiGet } from "@/lib/api";
-import { type ChatTurn } from "@/lib/chat";
+import type { ChatTurn, Conversation } from "@/lib/chat";
 
 export const dynamic = "force-dynamic";
 
-const SCOPE = "global";
+type SearchParams = Promise<{ scope?: string }>;
 
-export default async function ChatPage() {
-  let initialTurns: ChatTurn[] = [];
+export default async function ChatPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const { scope: requestedScope } = await searchParams;
+
+  let conversations: Conversation[] = [];
   let fetchError: string | null = null;
   try {
-    initialTurns = await apiGet<ChatTurn[]>(`/api/chat?scope=${SCOPE}`);
+    conversations = await apiGet<Conversation[]>("/api/chat/conversations");
   } catch (err) {
     fetchError =
       err instanceof ApiError
         ? `Backend returned ${err.status}: ${err.message}`
         : err instanceof Error
           ? err.message
-          : "Could not load chat history.";
+          : "Could not load conversations.";
+  }
+
+  // Resolve the active scope: explicit ?scope= wins, else most-recent
+  // conversation, else null (empty state). A requested scope that doesn't
+  // appear in the list yet is still active — happens right after "+ New chat"
+  // before the first message lands.
+  const activeScope: string | null =
+    requestedScope ??
+    (conversations.length > 0 ? conversations[0].scope : null);
+
+  let initialActiveTurns: ChatTurn[] = [];
+  if (activeScope) {
+    try {
+      initialActiveTurns = await apiGet<ChatTurn[]>(
+        `/api/chat?scope=${encodeURIComponent(activeScope)}`,
+      );
+    } catch {
+      // Brand-new scopes simply return []; any other failure degrades to empty
+      // and the chat panel will surface send errors itself.
+      initialActiveTurns = [];
+    }
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    // h-[calc(100vh-4rem)] caps the page to the viewport (minus main's py-8
+    // padding) so the inner flex column can constrain its scrolling child.
+    // Without a height ceiling, flex-1 + overflow-y-auto on the message
+    // scroller would let the page grow indefinitely instead of scrolling.
+    <div className="flex h-[calc(100vh-4rem)] min-h-0 flex-col gap-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Chat</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Operator agent — global scope. Searches the curated ETA knowledge
-          base before answering and cites sources by filename.
+          General ETA conversations. The Router dispatches each message to the
+          Operator (knowledge-base answers) or, when relevant, the Analyst.
         </p>
       </div>
 
@@ -35,7 +66,7 @@ export default async function ChatPage() {
           role="alert"
           className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
         >
-          <p className="font-medium">Couldn’t load chat history.</p>
+          <p className="font-medium">Couldn’t load conversations.</p>
           <p className="mt-1 font-mono text-xs">{fetchError}</p>
           <p className="mt-2 text-xs">
             Make sure the backend is running on{" "}
@@ -43,7 +74,11 @@ export default async function ChatPage() {
           </p>
         </div>
       ) : (
-        <ChatPanel scope={SCOPE} initialTurns={initialTurns} />
+        <ChatWorkspace
+          initialConversations={conversations}
+          activeScope={activeScope}
+          initialActiveTurns={initialActiveTurns}
+        />
       )}
     </div>
   );

@@ -39,3 +39,11 @@ export type ChatRequest = {
   scope: string;
   message: string;
 };
+
+export type Conversation = {
+  scope: string;
+  title: string;
+  turn_count: number;
+  first_at: string;
+  last_at: string;
+};

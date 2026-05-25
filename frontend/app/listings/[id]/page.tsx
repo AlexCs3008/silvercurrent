@@ -150,11 +150,13 @@ export default async function ListingDetailPage({ params }: PageProps) {
                 <p className="mt-1 font-mono text-xs">{chatError}</p>
               </div>
             ) : (
-              <ChatPanel
-                scope={scope}
-                initialTurns={initialTurns}
-                variant="listing"
-              />
+              <div className="h-[36rem]">
+                <ChatPanel
+                  scope={scope}
+                  initialTurns={initialTurns}
+                  variant="listing"
+                />
+              </div>
             )}
           </div>
         </TabsContent>

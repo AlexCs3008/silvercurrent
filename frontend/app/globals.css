@@ -8,8 +8,9 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-serif);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -126,5 +127,13 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Headings default to the serif (Fraunces) for editorial character.
+     Pages can opt out by setting font-sans on a specific heading. */
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-serif);
+    font-feature-settings: "ss01";
   }
 }

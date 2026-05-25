@@ -11,8 +11,8 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from silvercurrent.agents.analyst import AnalystAgent
@@ -25,6 +25,7 @@ from silvercurrent.schemas.chat import (
     ChatResponse,
     ChatTurnRead,
     ChatUsage,
+    ConversationRead,
     RoutingInfo,
 )
 
@@ -36,14 +37,31 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 HISTORY_LIMIT = 20
 
 LISTING_SCOPE_PREFIX = "listing:"
+CHAT_SCOPE_PREFIX = "chat:"
 
 
 def _parse_scope(scope: str) -> UUID | None:
-    """Return the listing id parsed from `scope`, or `None` for global scope.
+    """Return the listing id parsed from `scope`, or `None` for non-listing scopes.
 
-    Raises HTTPException(400) for unsupported scope formats.
+    Accepts:
+      - `global`              — legacy single global conversation
+      - `chat:<uuid>`         — user-created conversation on the Chat page
+      - `listing:<uuid>`      — listing-scoped conversation
+
+    Raises HTTPException(400) for unsupported scope formats. Both `global` and
+    `chat:*` return None — they have no listing context for the Router.
     """
     if scope == "global":
+        return None
+    if scope.startswith(CHAT_SCOPE_PREFIX):
+        raw = scope[len(CHAT_SCOPE_PREFIX) :]
+        try:
+            UUID(raw)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"invalid chat id in scope '{scope}': {e}",
+            ) from e
         return None
     if scope.startswith(LISTING_SCOPE_PREFIX):
         raw = scope[len(LISTING_SCOPE_PREFIX) :]
@@ -56,7 +74,10 @@ def _parse_scope(scope: str) -> UUID | None:
             ) from e
     raise HTTPException(
         status_code=400,
-        detail=(f"scope '{scope}' is not supported. Use 'global' or 'listing:<uuid>'."),
+        detail=(
+            f"scope '{scope}' is not supported. "
+            "Use 'global', 'chat:<uuid>', or 'listing:<uuid>'."
+        ),
     )
 
 
@@ -69,6 +90,65 @@ async def list_chat_turns(
     stmt = select(ChatTurn).where(ChatTurn.scope == scope).order_by(ChatTurn.created_at.asc())
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+# Max length of a derived conversation title (chars). Chosen to fit the rail.
+_TITLE_MAX = 60
+
+
+def _derive_title(content: str) -> str:
+    """First user message, whitespace-collapsed, truncated."""
+    flat = " ".join(content.split())
+    if len(flat) <= _TITLE_MAX:
+        return flat
+    return flat[: _TITLE_MAX - 1].rstrip() + "…"
+
+
+@router.get("/conversations", response_model=list[ConversationRead])
+async def list_conversations(session: SessionDep) -> list[ConversationRead]:
+    """Group non-listing chat turns by scope and return one entry per conversation.
+
+    Includes the legacy `global` scope and all `chat:<uuid>` scopes. Listing
+    chats are excluded — they live on the listing detail page. Ordered by
+    most-recent-activity first.
+    """
+    stmt = (
+        select(ChatTurn)
+        .where(or_(ChatTurn.scope == "global", ChatTurn.scope.like("chat:%")))
+        .order_by(ChatTurn.scope.asc(), ChatTurn.created_at.asc())
+    )
+    rows = list((await session.execute(stmt)).scalars().all())
+
+    by_scope: dict[str, list[ChatTurn]] = {}
+    for row in rows:
+        by_scope.setdefault(row.scope, []).append(row)
+
+    out: list[ConversationRead] = []
+    for scope, turns in by_scope.items():
+        first_user = next((t for t in turns if t.role == "user"), None)
+        title = _derive_title(first_user.content) if first_user else "Untitled"
+        out.append(
+            ConversationRead(
+                scope=scope,
+                title=title,
+                turn_count=len(turns),
+                first_at=turns[0].created_at,
+                last_at=turns[-1].created_at,
+            )
+        )
+
+    out.sort(key=lambda c: c.last_at, reverse=True)
+    return out
+
+
+@router.delete("", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_chat_scope(session: SessionDep, scope: str) -> Response:
+    """Delete every turn for `scope`. Idempotent — 204 even if nothing matched."""
+    if not scope:
+        raise HTTPException(status_code=400, detail="scope is required")
+    await session.execute(delete(ChatTurn).where(ChatTurn.scope == scope))
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("", response_model=ChatResponse)

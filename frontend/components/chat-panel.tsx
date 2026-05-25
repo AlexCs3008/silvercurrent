@@ -22,12 +22,19 @@ type ChatPanelProps = {
    * The Router picks per-turn either way; this only changes UI framing.
    */
   variant?: "global" | "listing";
+  /**
+   * Called after a successful send. Lets the parent refresh sibling UI (e.g.
+   * the conversation rail on the global chat page) without coupling ChatPanel
+   * to that UI.
+   */
+  onAfterSend?: () => void;
 };
 
 export function ChatPanel({
   scope,
   initialTurns,
   variant = "global",
+  onAfterSend,
 }: ChatPanelProps) {
   const [turns, setTurns] = useState<ChatTurn[]>(initialTurns);
   const [draft, setDraft] = useState("");
@@ -36,6 +43,17 @@ export function ChatPanel({
   const [lastUsage, setLastUsage] = useState<ChatUsage | null>(null);
   const [lastRouting, setLastRouting] = useState<RoutingInfo | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+
+  // Reset transient state when the scope changes (user switched conversations
+  // or the conversation was cleared). Server-fetched `initialTurns` already
+  // reflects the new scope; we just need to drop the local cache + usage strip.
+  useEffect(() => {
+    setTurns(initialTurns);
+    setDraft("");
+    setError(null);
+    setLastUsage(null);
+    setLastRouting(null);
+  }, [scope, initialTurns]);
 
   // Auto-scroll to bottom when new turns appear or while waiting.
   useEffect(() => {
@@ -71,6 +89,7 @@ export function ChatPanel({
       ]);
       setLastUsage(response.usage);
       setLastRouting(response.routing);
+      onAfterSend?.();
     } catch (err) {
       setTurns((prev) => prev.filter((t) => t.id !== optimistic.id));
       setError(err instanceof Error ? err.message : "Send failed.");
@@ -92,16 +111,14 @@ export function ChatPanel({
     }
   }
 
-  const heightClass =
-    variant === "listing"
-      ? "h-[36rem]"
-      : "h-[calc(100vh-6rem)]";
-
+  // Size-agnostic: parent container controls height. On the global Chat page
+  // the parent is `flex-1` in a flex column; on listing tabs the parent is
+  // `h-[36rem]`.
   return (
-    <div className={"flex flex-col gap-4 " + heightClass}>
+    <div className="flex h-full min-h-0 flex-col gap-4">
       <div
         ref={scrollerRef}
-        className="flex-1 overflow-y-auto rounded-lg border border-border bg-card/30 p-4"
+        className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-card/30 p-4"
       >
         {turns.length === 0 ? (
           <EmptyState variant={variant} />

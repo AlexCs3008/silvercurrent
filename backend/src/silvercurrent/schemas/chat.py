@@ -58,3 +58,18 @@ class ChatResponse(BaseModel):
     agent_used: RoutedAgent
     usage: ChatUsage
     routing: RoutingInfo
+
+
+class ConversationRead(BaseModel):
+    """One conversation in the global Chat page — a grouping of turns by scope.
+
+    Surfaces only non-listing scopes (legacy `global` and user-created
+    `chat:<uuid>`). Listing-scoped chats are their own workspace per listing
+    and aren't surfaced here.
+    """
+
+    scope: str
+    title: str
+    turn_count: int
+    first_at: datetime
+    last_at: datetime
