@@ -1,17 +1,19 @@
 # Tasks — currently in flight
 
-*Active phase: **none — Screen / Diligence / Judgment expansion (Phases A–F) shipped 2026-05-06.***
-*Last updated: 2026-05-06 — back to manual-sourcing mode; live-smoke against real listings is the next call to action.*
+*Active phase: **none — frontend cockpit polish + multi-conversation chat + corpus expansion shipped 2026-05-26.***
+*Last updated: 2026-05-26 — operator corpus now at 9 sources / 3592 chunks; live-smoke against real listings remains the highest-leverage next move.*
 
 ---
 
 *Nothing in flight.*
 
-The cockpit now supports per-listing fit-band scoring (Phase A), append-only decision journaling on status transitions (Phase B), document attachments with FTS5 keyword search (Phase C), parameterized capital-stack scenarios (Phase D), side-by-side Deal Sheet comparison (Phase E), and an inventory calibration rollup (Phase F).
+Recent shipping:
+- **2026-05-26** — Cockpit polish (sidebar active state, home inventory snapshot, listings list redesign, Inter + Fraunces typography). Multi-conversation `/chat` page with add/delete/clear. Operator corpus expanded with HBR Buying Guide, Buy Then Build, Stanford Search Fund Primer. See session note `docs/sessions/2026-05-26-cockpit-polish-and-multi-chat.md`.
+- **2026-05-06** — Screen / Diligence / Judgment expansion (Phases A–F).
 
 **Three reasonable next directions when there's appetite for code work again:**
 
-1. **Live smoke against real listings** — upload a real CIM, ask document-aware diligence questions, walk a listing through the status pipeline and confirm the journal modal fires correctly. Likely surfaces prompt tuning needed on `analyst-chat.md` for the new `search_listing_documents` and `model_capital_stack` tools.
+1. **Live smoke against real listings** — upload a real CIM, ask document-aware diligence questions, walk a listing through the status pipeline and confirm the journal modal fires correctly. Likely surfaces prompt tuning needed on `analyst-chat.md` for the new `search_listing_documents` and `model_capital_stack` tools. Highest-leverage now that three real ETA books are in the Operator KB.
 
 2. **Phase 4 — Email ingestion daemon (still deferred).** ADR `0007-inbound-email-provider.md` is parked at status `deferred`. Reopen when manual sourcing is the bottleneck.
 
